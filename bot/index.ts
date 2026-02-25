@@ -77,7 +77,7 @@ bot.on('message', async (msg) => {
     const state = userStates[chatId];
     if (!state) {
         // Unhandled text outside of a flow triggers the main menu
-        bot.sendMessage(chatId, 'I didn\'t quite catch that. Please use the menu below:', getMainMenuKeyboard());
+        bot.sendMessage(chatId, 'Welcome to LifeSync Bot! 🚀\n\n🌐 *Web App URL:* https://lifesync-sand.vercel.app/\nPlease select a module below to get started:', getMainMenuKeyboard());
         return;
     }
 
