@@ -1215,7 +1215,7 @@ const checkUpcomingReminders = async () => {
         const now = new Date();
         const lookAhead = new Date(now.getTime() + 65 * 60 * 1000); // look ahead for 1 hr + 5 mins
 
-        // Only fetch reminders that are due within our window
+        // Fetch reminders that are due within our window, including past overdue ones
         const { data: dueReminders, error } = await supabase
             .from('reminders')
             .select('*')
@@ -1233,12 +1233,25 @@ const checkUpcomingReminders = async () => {
                 const timeDiff = dueDate - now.getTime();
                 const minutesUntil = Math.round(timeDiff / (1000 * 60));
 
-                if (minutesUntil === 0 || minutesUntil === 30 || minutesUntil === 5 || minutesUntil === 60) {
-                    const notifKey = `${r.id}_${minutesUntil}`;
+                let notifyType: number | null = null;
+
+                // If it's 0 or overdue, we consider it a '0' notification
+                if (minutesUntil <= 0) {
+                    notifyType = 0;
+                } else if (minutesUntil === 5) {
+                    notifyType = 5;
+                } else if (minutesUntil === 30) {
+                    notifyType = 30;
+                } else if (minutesUntil === 60) {
+                    notifyType = 60;
+                }
+
+                if (notifyType !== null) {
+                    const notifKey = `${r.id}_${notifyType}`;
                     if (!notifiedReminders.has(notifKey)) {
                         notifiedReminders.add(notifKey);
 
-                        const titleText = minutesUntil <= 0 ? `🔔 *REMINDER DUE NOW*` : `🔔 *Upcoming Reminder in ${minutesUntil} mins!*`;
+                        const titleText = notifyType === 0 ? `🔔 *REMINDER DUE NOW/OVERDUE*` : `🔔 *Upcoming Reminder in ${notifyType} mins!*`;
 
                         bot.sendMessage(ownerId, `${titleText}\n\n*${r.title}*`, {
                             parse_mode: 'Markdown',
@@ -1256,7 +1269,7 @@ const checkUpcomingReminders = async () => {
                                     ]
                                 ]
                             }
-                        });
+                        }).catch(console.error);
                     }
                 }
             }
@@ -1276,16 +1289,24 @@ const checkWaterIntake = () => {
     const istString = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
     const istDate = new Date(istString);
     const hour = istDate.getHours();
-    const minute = istDate.getMinutes();
 
     const allowedHours = [11, 13, 15, 17, 19, 21, 23];
 
-    // Notify exactly at minute 0 
-    if (allowedHours.includes(hour) && minute === 0) {
+    // Find the currently active block
+    let targetHour = -1;
+    for (let i = allowedHours.length - 1; i >= 0; i--) {
+        if (hour >= allowedHours[i]) {
+            targetHour = allowedHours[i];
+            break;
+        }
+    }
+
+    // Notify if we are within an active block and haven't notified for it today
+    if (targetHour !== -1) {
         const dateKey = istDate.toISOString().split('T')[0];
-        if (lastWaterReminderDate !== dateKey || lastWaterReminderHour !== hour) {
+        if (lastWaterReminderDate !== dateKey || lastWaterReminderHour !== targetHour) {
             lastWaterReminderDate = dateKey;
-            lastWaterReminderHour = hour;
+            lastWaterReminderHour = targetHour;
 
             bot.sendMessage(ownerId, `💧 *Time to drink water!*\n\nStay hydrated!`, {
                 parse_mode: 'Markdown',
@@ -1294,7 +1315,7 @@ const checkWaterIntake = () => {
                         [{ text: '✔️ Taken', callback_data: 'action_add_water' }, { text: '⏭️ Skip', callback_data: 'action_skip_water' }]
                     ]
                 }
-            });
+            }).catch(console.error);
         }
     }
 };
