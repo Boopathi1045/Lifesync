@@ -1,0 +1,28 @@
+{
+  "name": "lifesync-ultimate",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "tsc --noEmit",
+    "preview": "vite preview",
+    "bot": "tsx bot/index.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.97.0",
+    "dotenv": "^17.3.1",
+    "node-telegram-bot-api": "^0.67.0",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/node-telegram-bot-api": "^0.64.13",
+    "@vitejs/plugin-react": "^5.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "LifeSync Ultimate",
+  "description": "A comprehensive personal productivity suite featuring advanced finance management, habit tracking, secure password storage, and smart reminders.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
