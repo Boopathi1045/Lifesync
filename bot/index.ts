@@ -28,6 +28,17 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // Create a bot that uses 'polling' to fetch new updates
 const bot = new TelegramBot(token, { polling: true });
 
+// Create a simple dummy server so cloud providers (like Render) have a port to bind to
+import http from 'http';
+const port = process.env.PORT || 3000;
+http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.write('Bot is alive and running!');
+    res.end();
+}).listen(port as number, '0.0.0.0', () => {
+    console.log(`Dummy server listening on port ${port} at 0.0.0.0`);
+});
+
 console.log('Bot is running...');
 
 // Simple in-memory state for conversational flows
