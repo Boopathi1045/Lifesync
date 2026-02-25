@@ -219,32 +219,7 @@ bot.on('message', async (msg) => {
                 reply_markup: { inline_keyboard: [[{ text: '🔙 Back to Main Menu', callback_data: 'main_menu' }]] }
             });
 
-            // Schedule notification if due date is in the future
-            if (finalDate > new Date()) {
-                const timeDiff = finalDate.getTime() - new Date().getTime();
-                // If it's within the next 24 hours, schedule a timeout
-                if (timeDiff <= 24 * 60 * 60 * 1000) {
-                    setTimeout(() => {
-                        bot.sendMessage(chatId, `🔔 *REMINDER*\n\n${state.title}`, {
-                            parse_mode: 'Markdown',
-                            reply_markup: {
-                                inline_keyboard: [
-                                    [{ text: '✔️ Mark Done', callback_data: `action_done_${newReminder.id}` }],
-                                    [
-                                        { text: '💤 10m', callback_data: `action_snooze_${newReminder.id}_10` },
-                                        { text: '💤 30m', callback_data: `action_snooze_${newReminder.id}_30` },
-                                        { text: '💤 1h', callback_data: `action_snooze_${newReminder.id}_60` }
-                                    ],
-                                    [
-                                        { text: '💤 1d', callback_data: `action_snooze_${newReminder.id}_1440` },
-                                        { text: '💤 Custom (hrs)', callback_data: `action_customsnooze_${newReminder.id}` }
-                                    ]
-                                ]
-                            }
-                        });
-                    }, timeDiff);
-                }
-            }
+            // Notification will be handled by the polling mechanism
         } catch (error) {
             console.error(error);
             bot.sendMessage(chatId, 'Error saving reminder.');
@@ -269,25 +244,7 @@ bot.on('message', async (msg) => {
 
                 bot.sendMessage(chatId, `💤 Snoozed *${rem.title}* for ${hours} hour(s)!`, { parse_mode: 'Markdown' });
 
-                setTimeout(() => {
-                    bot.sendMessage(chatId, `🔔 *REMINDER*\n\n${rem.title}`, {
-                        parse_mode: 'Markdown',
-                        reply_markup: {
-                            inline_keyboard: [
-                                [{ text: '✔️ Mark Done', callback_data: `action_done_${rem.id}` }],
-                                [
-                                    { text: '💤 10m', callback_data: `action_snooze_${rem.id}_10` },
-                                    { text: '💤 30m', callback_data: `action_snooze_${rem.id}_30` },
-                                    { text: '💤 1h', callback_data: `action_snooze_${rem.id}_60` }
-                                ],
-                                [
-                                    { text: '💤 1d', callback_data: `action_snooze_${rem.id}_1440` },
-                                    { text: '💤 Custom (hrs)', callback_data: `action_customsnooze_${rem.id}` }
-                                ]
-                            ]
-                        }
-                    });
-                }, hours * 60 * 60 * 1000);
+                // Notification will be handled by the polling mechanism
             }
         }
         delete userStates[chatId];
@@ -566,26 +523,7 @@ bot.on('callback_query', async (query) => {
                         parse_mode: 'Markdown'
                     });
 
-                    // Reschedule for the snooze duration
-                    setTimeout(() => {
-                        bot.sendMessage(chatId, `🔔 *REMINDER*\n\n${rem.title}`, {
-                            parse_mode: 'Markdown',
-                            reply_markup: {
-                                inline_keyboard: [
-                                    [{ text: '✔️ Mark Done', callback_data: `action_done_${rem.id}` }],
-                                    [
-                                        { text: '💤 10m', callback_data: `action_snooze_${rem.id}_10` },
-                                        { text: '💤 30m', callback_data: `action_snooze_${rem.id}_30` },
-                                        { text: '💤 1h', callback_data: `action_snooze_${rem.id}_60` }
-                                    ],
-                                    [
-                                        { text: '💤 1d', callback_data: `action_snooze_${rem.id}_1440` },
-                                        { text: '💤 Custom (hrs)', callback_data: `action_customsnooze_${rem.id}` }
-                                    ]
-                                ]
-                            }
-                        });
-                    }, minutes * 60 * 1000);
+                    // Notification will be handled by the polling mechanism
                 }
             }
         } else if (data.startsWith('action_customsnooze_')) {
@@ -1268,20 +1206,21 @@ bot.onText(/\/snooze (.+) (\d+)/, async (msg, match) => {
 });
 
 // Setup Notification Polling
+const notifiedReminders = new Set<string>();
+
 const checkUpcomingReminders = async () => {
     if (!ownerId) return;
 
     try {
         const now = new Date();
-        // Look ahead 1 hour
-        const lookAhead = new Date(now.getTime() + 60 * 60 * 1000);
+        const lookAhead = new Date(now.getTime() + 65 * 60 * 1000); // look ahead for 1 hr + 5 mins
 
+        // Only fetch reminders that are due within our window
         const { data: dueReminders, error } = await supabase
             .from('reminders')
             .select('*')
             .eq('isDone', false)
-            .lte('dueDate', lookAhead.toISOString())
-            .gte('dueDate', now.toISOString()); // only upcoming in the next hour, not past due
+            .lte('dueDate', lookAhead.toISOString());
 
         if (error) {
             console.error('Error polling reminders:', error);
@@ -1290,13 +1229,35 @@ const checkUpcomingReminders = async () => {
 
         if (dueReminders && dueReminders.length > 0) {
             for (const r of dueReminders) {
-                // Prevent duplicate notifications in memory (Simple hack: We could store notified IDs in DB)
-                const timeDiff = new Date(r.dueDate).getTime() - now.getTime();
+                const dueDate = new Date(r.dueDate).getTime();
+                const timeDiff = dueDate - now.getTime();
                 const minutesUntil = Math.round(timeDiff / (1000 * 60));
 
-                // Notify at exactly 60, 30, and 5 minutes remaining
-                if (minutesUntil === 60 || minutesUntil === 30 || minutesUntil === 5) {
-                    bot.sendMessage(ownerId, `🔔 *Upcoming Reminder in ${minutesUntil} mins!*\n\n*${r.title}*\nID: \`${r.id}\`\n\nTo mark done: /done ${r.id}\nTo snooze: /snooze ${r.id} 24`, { parse_mode: 'Markdown' });
+                if (minutesUntil === 0 || minutesUntil === 30 || minutesUntil === 5 || minutesUntil === 60) {
+                    const notifKey = `${r.id}_${minutesUntil}`;
+                    if (!notifiedReminders.has(notifKey)) {
+                        notifiedReminders.add(notifKey);
+
+                        const titleText = minutesUntil <= 0 ? `🔔 *REMINDER DUE NOW*` : `🔔 *Upcoming Reminder in ${minutesUntil} mins!*`;
+
+                        bot.sendMessage(ownerId, `${titleText}\n\n*${r.title}*`, {
+                            parse_mode: 'Markdown',
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [{ text: '✔️ Mark Done', callback_data: `action_done_${r.id}` }],
+                                    [
+                                        { text: '💤 10m', callback_data: `action_snooze_${r.id}_10` },
+                                        { text: '💤 30m', callback_data: `action_snooze_${r.id}_30` },
+                                        { text: '💤 1h', callback_data: `action_snooze_${r.id}_60` }
+                                    ],
+                                    [
+                                        { text: '💤 1d', callback_data: `action_snooze_${r.id}_1440` },
+                                        { text: '💤 Custom (hrs)', callback_data: `action_customsnooze_${r.id}` }
+                                    ]
+                                ]
+                            }
+                        });
+                    }
                 }
             }
         }
@@ -1305,8 +1266,44 @@ const checkUpcomingReminders = async () => {
     }
 };
 
+let lastWaterReminderDate = '';
+let lastWaterReminderHour = -1;
+
+const checkWaterIntake = () => {
+    if (!ownerId) return;
+
+    const now = new Date();
+    const istString = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+    const istDate = new Date(istString);
+    const hour = istDate.getHours();
+    const minute = istDate.getMinutes();
+
+    const allowedHours = [11, 13, 15, 17, 19, 21, 23];
+
+    // Notify exactly at minute 0 
+    if (allowedHours.includes(hour) && minute === 0) {
+        const dateKey = istDate.toISOString().split('T')[0];
+        if (lastWaterReminderDate !== dateKey || lastWaterReminderHour !== hour) {
+            lastWaterReminderDate = dateKey;
+            lastWaterReminderHour = hour;
+
+            bot.sendMessage(ownerId, `💧 *Time to drink water!*\n\nStay hydrated!`, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '✔️ Taken', callback_data: 'action_add_water' }, { text: '⏭️ Skip', callback_data: 'action_skip_water' }]
+                    ]
+                }
+            });
+        }
+    }
+};
+
 // Start Polling every 1 minute
-setInterval(checkUpcomingReminders, 60 * 1000);
+setInterval(() => {
+    checkUpcomingReminders();
+    checkWaterIntake();
+}, 60 * 1000);
 
 // Error handling polling errors
 bot.on('polling_error', (error) => {
