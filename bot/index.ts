@@ -373,9 +373,7 @@ bot.onText(/\/(start|menu)/, (msg) => {
     const welcomeMessage = `
 Welcome to LifeSync Bot! 🚀
 
-🌐 *Web App URL:* https://your-hosted-webapp-url.com
-(Replace with your actual hosted link)
-
+🌐 *Web App URL:* https://lifesync-sand.vercel.app/
 Please select a module below to get started:
 `;
 
