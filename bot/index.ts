@@ -59,6 +59,9 @@ interface UserState {
 }
 const userStates: Record<string, UserState> = {};
 
+// Import AI parsers
+import { parseIntentFromText, parseIntentFromAudio } from './ai';
+
 // Middleware to check if the user is authorized
 const isAuthorized = (msg: TelegramBot.Message): boolean => {
     if (!ownerId) {
@@ -69,16 +72,201 @@ const isAuthorized = (msg: TelegramBot.Message): boolean => {
     return msg.chat.id.toString() === ownerId;
 };
 
-// Catch-all message handler for conversational flows
+// Helper to resolve an account from a hint
+async function resolveAccount(hint: string | undefined): Promise<string | null> {
+    const { data: accounts } = await supabase.from('accounts').select('id, name');
+    if (!accounts || accounts.length === 0) return null;
+
+    if (!hint) {
+        // If no hint, just use the first account as default
+        return accounts[0].id;
+    }
+
+    // Try to match hint
+    const match = accounts.find(a => a.name.toLowerCase().includes(hint.toLowerCase()));
+    if (match) return match.id;
+
+    return accounts[0].id;
+}
+
+// Catch-all message handler for conversational flows and AI
 bot.on('message', async (msg) => {
-    if (!msg.text || msg.text.startsWith('/')) return; // Ignore commands
+    if (msg.text && msg.text.startsWith('/')) return; // Ignore commands
     if (!isAuthorized(msg)) return;
 
     const chatId = msg.chat.id.toString();
     const state = userStates[chatId];
+
+    // If user is not in a specific menu state, route to AI
     if (!state) {
-        // Unhandled text outside of a flow triggers the main menu
-        bot.sendMessage(chatId, 'Welcome to LifeSync Bot! 🚀\n\n🌐 *Web App URL:* https://lifesync-sand.vercel.app/\nPlease select a module below to get started:', getMainMenuKeyboard());
+        let inputType: 'text' | 'voice' | 'none' = 'none';
+        let inputText = '';
+        let fileId = '';
+
+        if (msg.text) {
+            inputType = 'text';
+            inputText = msg.text;
+        } else if (msg.voice) {
+            inputType = 'voice';
+            fileId = msg.voice.file_id;
+        }
+
+        if (inputType === 'none') {
+            bot.sendMessage(chatId, 'Type a message or send a voice note, or use /menu to see options.');
+            return;
+        }
+
+        bot.sendChatAction(chatId, inputType === 'voice' ? 'record_voice' : 'typing');
+
+        try {
+            let aiResult: any;
+
+            if (inputType === 'voice') {
+                const fileLink = await bot.getFileLink(fileId);
+                aiResult = await parseIntentFromAudio(fileLink);
+            } else {
+                aiResult = await parseIntentFromText(inputText);
+            }
+
+            const intent = aiResult.intent;
+
+            if (intent === 'ADD_TRANSACTION' && aiResult.transaction) {
+                const tx = aiResult.transaction;
+                if (!tx.amount || !tx.purpose) {
+                    bot.sendMessage(chatId, "I understood it's a transaction, but could you specify the amount and purpose?");
+                    return;
+                }
+                const accountId = await resolveAccount(tx.accountHint);
+                if (!accountId) {
+                    bot.sendMessage(chatId, "You need to create at least one account in the web app first.");
+                    return;
+                }
+
+                const newTx = {
+                    id: crypto.randomUUID(),
+                    amount: tx.amount,
+                    purpose: tx.purpose,
+                    date: new Date().toISOString().split('T')[0],
+                    type: tx.type === 'INCOME' ? 'INCOME' : 'EXPENSE',
+                    accountId: accountId
+                };
+
+                await supabase.from('transactions').insert([newTx]);
+
+                // Update Account balance
+                const { data: acc } = await supabase.from('accounts').select('*').eq('id', accountId).single();
+                if (acc) {
+                    const newBalance = newTx.type === 'EXPENSE'
+                        ? Number(acc.balance) - Number(tx.amount)
+                        : Number(acc.balance) + Number(tx.amount);
+
+                    const flowUpdate = newTx.type === 'EXPENSE'
+                        ? { balance: newBalance, totalOutflow: Number(acc.totalOutflow) + Number(tx.amount) }
+                        : { balance: newBalance, totalInflow: Number(acc.totalInflow) + Number(tx.amount) };
+
+                    await supabase.from('accounts').update(flowUpdate).eq('id', accountId);
+                }
+
+                bot.sendMessage(chatId, `✅ Logged ${newTx.type} of ₹${tx.amount} for "${tx.purpose}".\nAvailable balance updated.`);
+            }
+            else if (intent === 'ADD_REMINDER' && aiResult.reminder) {
+                const r = aiResult.reminder;
+                if (!r.title) {
+                    bot.sendMessage(chatId, "I caught the reminder intent, but what exactly should I remind you about?");
+                    return;
+                }
+
+                let finalDate = new Date();
+                if (r.dateStr) {
+                    const parsed = new Date(r.dateStr);
+                    if (!isNaN(parsed.getTime())) {
+                        finalDate = parsed;
+                    }
+                } else {
+                    finalDate.setHours(23, 59, 59, 999);
+                }
+
+                const newReminder = {
+                    id: crypto.randomUUID(),
+                    title: r.title,
+                    description: 'Added via AI Assistant',
+                    dueDate: finalDate.toISOString(),
+                    category: 'GENERAL',
+                    isDone: false
+                };
+
+                await supabase.from('reminders').insert([newReminder]);
+                bot.sendMessage(chatId, `✅ Set reminder: *${r.title}* for ${finalDate.toLocaleString()}`, { parse_mode: 'Markdown' });
+            }
+            else if (intent === 'ADD_WATCH_LATER' && aiResult.watchLater) {
+                const url = aiResult.watchLater.url || inputText;
+                if (!url.startsWith('http')) {
+                    bot.sendMessage(chatId, "I didn't find a valid URL to save.");
+                    return;
+                }
+
+                const newItem = {
+                    id: crypto.randomUUID(),
+                    title: 'Saved via AI',
+                    link: url,
+                    isWatched: false,
+                    dateAdded: new Date().toISOString()
+                };
+
+                await supabase.from('media_items').insert([newItem]);
+                bot.sendMessage(chatId, `✅ Saved to Watch Later!`);
+            }
+            else if (intent === 'ADD_PASSWORD' && aiResult.password) {
+                const p = aiResult.password;
+                if (!p.service || (!p.username && !p.password)) {
+                    bot.sendMessage(chatId, "I need at least the service name and either the username or password.");
+                    return;
+                }
+
+                const newPwd = {
+                    id: crypto.randomUUID(),
+                    service: p.service,
+                    username: p.username || 'Unknown',
+                    passwordString: p.password || 'Unknown',
+                    notes: 'Added via AI'
+                };
+
+                await supabase.from('passwords').insert([newPwd]);
+                bot.sendMessage(chatId, `✅ Saved credentials for *${p.service}*!`, { parse_mode: 'Markdown' });
+            }
+            else if (intent === 'ADD_WATER' && aiResult.habit) {
+                const glasses = aiResult.habit.glasses || 1;
+                const todayStr = new Date().toISOString().split('T')[0];
+                const { data: habit } = await supabase.from('daily_habits').select('*').eq('date', todayStr).single();
+                const newIntake = (habit ? habit.water_intake : 0) + glasses;
+
+                await supabase.from('daily_habits').upsert({ date: todayStr, water_intake: newIntake });
+                bot.sendMessage(chatId, `💧 Added ${glasses} glass(es). Total today: ${newIntake}/8 glasses.`);
+            }
+            else if (intent === 'SET_WAKEUP' && aiResult.habit?.time) {
+                const timeStr = aiResult.habit.time;
+                const todayStr = new Date().toISOString().split('T')[0];
+                await supabase.from('daily_habits').upsert({ date: todayStr, wake_up_time: timeStr }, { onConflict: 'date' });
+                bot.sendMessage(chatId, `🌅 Got it! Wake up time set to ${timeStr}.`);
+            }
+            else if (intent === 'SET_SLEEP' && aiResult.habit?.time) {
+                const timeStr = aiResult.habit.time;
+                const todayStr = new Date().toISOString().split('T')[0];
+                await supabase.from('daily_habits').upsert({ date: todayStr, sleep_time: timeStr }, { onConflict: 'date' });
+                bot.sendMessage(chatId, `🌙 Sleep well! Logged sleep time as ${timeStr}.`);
+            }
+            else {
+                // UNKNOWN intent or missing details
+                if (aiResult.replyText) {
+                    bot.sendMessage(chatId, aiResult.replyText);
+                } else {
+                    bot.sendMessage(chatId, "I'm not exactly sure what to do with that. You can tell me to add a transaction, save a reminder, etc.", getMainMenuKeyboard());
+                }
+            }
+        } catch (error) {
+            console.error("AI Error:", error);
+            bot.sendMessage(chatId, "⚠️ Sorry, I encountered an issue thinking about that. Is my Gemini API key correctly set?");
+        }
         return;
     }
 
