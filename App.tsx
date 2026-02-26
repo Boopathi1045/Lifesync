@@ -47,6 +47,9 @@ const App: React.FC = () => {
   const [purposes, setPurposes] = useState<PurposeCategory[]>([]);
   const [waterIntake, setWaterIntake] = useState(0);
   const [waterGoal] = useState(8);
+  const [wakeUpTime, setWakeUpTime] = useState<string>('');
+  const [sleepTime, setSleepTime] = useState<string>('');
+  const [habitHistory, setHabitHistory] = useState<any[]>([]);
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -141,7 +144,7 @@ const App: React.FC = () => {
           supabase.from(TABLES.TRANSACTIONS).select('*').order('date', { ascending: false }),
           supabase.from(TABLES.SUBSCRIPTIONS).select('*'),
           supabase.from(TABLES.PURPOSES).select('*'),
-          supabase.from(TABLES.DAILY_HABITS).select('*').eq('date', todayStr).maybeSingle()
+          supabase.from(TABLES.DAILY_HABITS).select('*').order('date', { ascending: true })
         ]);
 
         if (remindersData) setReminders(remindersData);
@@ -152,7 +155,15 @@ const App: React.FC = () => {
         if (transactionsData) setTransactions(transactionsData);
         if (subscriptionsData) setSubscriptions(subscriptionsData);
         if (purposesData) setPurposes(purposesData);
-        if (habitsData) setWaterIntake(habitsData.water_intake);
+        if (habitsData) {
+          setHabitHistory(habitsData);
+          const todayHabit = habitsData.find((h: any) => h.date === todayStr);
+          if (todayHabit) {
+            setWaterIntake(todayHabit.water_intake);
+            setWakeUpTime(todayHabit.wake_up_time || '');
+            setSleepTime(todayHabit.sleep_time || '');
+          }
+        }
 
         isInitialLoad.current = false;
       } catch (error) {
@@ -173,7 +184,8 @@ const App: React.FC = () => {
       { name: TABLES.FRIENDS, setter: setFriends },
       { name: TABLES.TRANSACTIONS, setter: setTransactions, sortKey: 'date' },
       { name: TABLES.SUBSCRIPTIONS, setter: setSubscriptions },
-      { name: TABLES.PURPOSES, setter: setPurposes }
+      { name: TABLES.PURPOSES, setter: setPurposes },
+      { name: TABLES.DAILY_HABITS, setter: setHabitHistory, sortKey: 'date' }
     ];
 
     const channels = tables.map(table => {
@@ -209,9 +221,14 @@ const App: React.FC = () => {
   // Sync Hook for Habits (kept as it is date-based and simple)
   useEffect(() => {
     if (!isInitialLoad.current) {
-      saveToDB(TABLES.DAILY_HABITS, { date: todayStr, water_intake: waterIntake });
+      saveToDB(TABLES.DAILY_HABITS, {
+        date: todayStr,
+        water_intake: waterIntake,
+        wake_up_time: wakeUpTime,
+        sleep_time: sleepTime
+      });
     }
-  }, [waterIntake, todayStr, saveToDB]);
+  }, [waterIntake, wakeUpTime, sleepTime, todayStr, saveToDB]);
 
   const renderContent = () => {
     if (isLoading) {
@@ -249,7 +266,7 @@ const App: React.FC = () => {
           saveReminderToDB={saveReminderToDB}
         />;
       case View.HABITS:
-        return <HabitTracker waterIntake={waterIntake} setWaterIntake={setWaterIntake} waterGoal={waterGoal} />;
+        return <HabitTracker habitHistory={habitHistory} waterIntake={waterIntake} setWaterIntake={setWaterIntake} waterGoal={waterGoal} wakeUpTime={wakeUpTime} setWakeUpTime={setWakeUpTime} sleepTime={sleepTime} setSleepTime={setSleepTime} />;
       case View.PASSWORDS:
         return <PasswordManager passwords={passwords} setPasswords={setPasswords} removeFromDB={removeFromDB} saveToDB={saveToDB} />;
       case View.WATCH_LATER:

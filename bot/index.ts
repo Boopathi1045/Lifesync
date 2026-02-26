@@ -613,6 +613,36 @@ ${progress}
                     ]
                 }
             });
+        } else if (data.startsWith('action_wake_up_')) {
+            const timeVal = data.replace('action_wake_up_', '');
+            const todayStr = new Date().toISOString().split('T')[0];
+
+            await supabase
+                .from('daily_habits')
+                .upsert({ date: todayStr, wake_up_time: timeVal }, { onConflict: 'date' });
+
+            bot.editMessageText(`🌅 Good morning! Wake up time set to ${timeVal}. I'll remind you to drink water every 2 hours.`, {
+                chat_id: chatId,
+                message_id: query.message.message_id
+            });
+        } else if (data === 'action_sleep_now') {
+            const todayStr = new Date().toISOString().split('T')[0];
+            const now = new Date();
+            const timeVal = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+
+            await supabase
+                .from('daily_habits')
+                .upsert({ date: todayStr, sleep_time: timeVal }, { onConflict: 'date' });
+
+            bot.editMessageText(`🌙 Good night! Sleep time logged at ${timeVal}. Water reminders paused for today.`, {
+                chat_id: chatId,
+                message_id: query.message.message_id
+            });
+        } else if (data === 'action_sleep_not_yet') {
+            bot.editMessageText(`Got it, you're still awake. I'll ask again later or you can use the web app.`, {
+                chat_id: chatId,
+                message_id: query.message.message_id
+            });
         } else if (data === 'menu_watchlater') {
             bot.editMessageText('Fetching your Watch Later list...', { chat_id: chatId, message_id: query.message.message_id });
 
@@ -1287,32 +1317,85 @@ const checkUpcomingReminders = async () => {
 
 let lastWaterReminderDate = '';
 let lastWaterReminderHour = -1;
+let lastWakePromptDate = '';
+let lastSleepPromptDate = '';
 
-const checkWaterIntake = () => {
+const checkDailyPrompts = async () => {
+    if (!ownerId) return;
+    const now = new Date();
+    const istString = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+    const istDate = new Date(istString);
+    const hour = istDate.getHours();
+    const todayStr = istDate.toISOString().split('T')[0];
+
+    // 6 AM Wake Up Prompt
+    if (hour >= 6 && hour < 10 && lastWakePromptDate !== todayStr) {
+        // Only ask if wake_up_time is null
+        const { data: habit } = await supabase.from('daily_habits').select('*').eq('date', todayStr).single();
+        if (!habit || !habit.wake_up_time) {
+            lastWakePromptDate = todayStr;
+            bot.sendMessage(ownerId, `🌅 *Good Morning!*\n\nDid you wake up?`, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '06:00 AM', callback_data: 'action_wake_up_06:00' }, { text: '07:00 AM', callback_data: 'action_wake_up_07:00' }],
+                        [{ text: '08:00 AM', callback_data: 'action_wake_up_08:00' }, { text: '09:00 AM', callback_data: 'action_wake_up_09:00' }]
+                    ]
+                }
+            }).catch(console.error);
+        } else {
+            // Already set via web or bot, don't ask again today
+            lastWakePromptDate = todayStr;
+        }
+    }
+
+    // 10 PM Sleep Prompt
+    if (hour >= 22 && lastSleepPromptDate !== todayStr) {
+        const { data: habit } = await supabase.from('daily_habits').select('*').eq('date', todayStr).single();
+        if (habit && habit.wake_up_time && !habit.sleep_time) {
+            lastSleepPromptDate = todayStr;
+            bot.sendMessage(ownerId, `🌙 *Evening Check-in*\n\nIt's past 10 PM. Are you going to sleep?`, {
+                parse_mode: 'Markdown',
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '✔️ Yes, sleep now', callback_data: 'action_sleep_now' }],
+                        [{ text: '❌ Not yet', callback_data: 'action_sleep_not_yet' }]
+                    ]
+                }
+            }).catch(console.error);
+        } else {
+            lastSleepPromptDate = todayStr;
+        }
+    }
+}
+
+const checkWaterIntake = async () => {
     if (!ownerId) return;
 
     const now = new Date();
     const istString = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
     const istDate = new Date(istString);
     const hour = istDate.getHours();
+    const todayStr = istDate.toISOString().split('T')[0];
 
-    const allowedHours = [11, 13, 15, 17, 19, 21, 23];
+    // Fetch today's habit
+    const { data: habit } = await supabase.from('daily_habits').select('*').eq('date', todayStr).single();
 
-    // Find the currently active block
-    let targetHour = -1;
-    for (let i = allowedHours.length - 1; i >= 0; i--) {
-        if (hour >= allowedHours[i]) {
-            targetHour = allowedHours[i];
-            break;
-        }
-    }
+    // If not awake yet, or already asleep, do not send water reminders
+    if (!habit || !habit.wake_up_time || habit.sleep_time) return;
 
-    // Notify if we are within an active block and haven't notified for it today
-    if (targetHour !== -1) {
-        const dateKey = istDate.toISOString().split('T')[0];
-        if (lastWaterReminderDate !== dateKey || lastWaterReminderHour !== targetHour) {
-            lastWaterReminderDate = dateKey;
-            lastWaterReminderHour = targetHour;
+    // Calculate hours since wake up
+    const [wakeHourTemp, wakeMinTemp] = habit.wake_up_time.split(':').map(Number);
+    // Rough calc: wait until at least the next hour to start counting
+    const hoursSinceWake = hour - wakeHourTemp;
+
+    // Trigger every 2 hours, starting 2 hours AFTER wake up
+    // e.g. Woke at 6, triggers at 8, 10, 12...
+    // Only trigger if it's strictly a 2-hour interval and we haven't asked this specific hour
+    if (hoursSinceWake > 0 && hoursSinceWake % 2 === 0) {
+        if (lastWaterReminderDate !== todayStr || lastWaterReminderHour !== hour) {
+            lastWaterReminderDate = todayStr;
+            lastWaterReminderHour = hour;
 
             bot.sendMessage(ownerId, `💧 *Time to drink water!*\n\nStay hydrated!`, {
                 parse_mode: 'Markdown',
@@ -1329,6 +1412,7 @@ const checkWaterIntake = () => {
 // Start Polling every 1 minute
 setInterval(() => {
     checkUpcomingReminders();
+    checkDailyPrompts();
     checkWaterIntake();
 }, 60 * 1000);
 
