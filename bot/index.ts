@@ -54,6 +54,7 @@ interface UserState {
     username?: string;
     password?: string;
     dateObj?: Date;
+    dateStr?: string;
     reminderId?: string;
 }
 const userStates: Record<string, UserState> = {};
@@ -171,10 +172,11 @@ bot.on('message', async (msg) => {
             }
         }
 
-        // Store intermediate date
+        // Store intermediate date string instead of object to avoid timezone issues
         userStates[chatId].dateObj = finalDate;
+        userStates[chatId].dateStr = dateStr !== 'none' && dateStr !== 'today' ? dateStr : finalDate.toISOString().split('T')[0];
         state.step = 'wait_reminder_time';
-        bot.sendMessage(chatId, `Date set to ${finalDate.toLocaleDateString()}.\n\nNow enter the time (HH:MM AM/PM) or in 24-hour format.\nAlternatively, type "none" to set it for the end of the day:`, {
+        bot.sendMessage(chatId, `Date set to ${userStates[chatId].dateStr}.\n\nNow enter the time (HH:MM AM/PM) or in 24-hour format.\nAlternatively, type "none" to set it for the end of the day:`, {
             parse_mode: 'Markdown',
             reply_markup: { inline_keyboard: [[{ text: '❌ Cancel', callback_data: 'cancel_action' }]] }
         });
@@ -194,39 +196,43 @@ bot.on('message', async (msg) => {
                 const ampm = match[3];
 
                 if (ampm === 'pm' && hours < 12) hours += 12;
-                if (ampm === 'am' && hours === 12) hours = 0;
+                // Construct IST string and parse it properly
+                const istDateString = `${(state as any).dateStr}T${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:00+05:30`;
+                finalDate = new Date(istDateString);
 
-                finalDate.setHours(hours, mins, 0, 0);
+                if (isNaN(finalDate.getTime())) {
+                    bot.sendMessage(chatId, 'Error parsing the combined date and time.');
+                    return;
+                }
             } else {
                 bot.sendMessage(chatId, 'Invalid time format. Please use HH:MM. Example: 14:30 or 2:30 PM');
                 return;
             }
+
+            const newReminder = {
+                id: crypto.randomUUID(),
+                title: state.title,
+                description: 'Added via Telegram Bot',
+                dueDate: finalDate.toISOString(),
+                category: 'GENERAL',
+                isDone: false
+            };
+
+            try {
+                await supabase.from('reminders').insert([newReminder]);
+                bot.sendMessage(chatId, `✅ Reminder added successfully!\n*${state.title}* due on ${finalDate.toLocaleString()}`, {
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: [[{ text: '🔙 Back to Main Menu', callback_data: 'main_menu' }]] }
+                });
+
+                // Notification will be handled by the polling mechanism
+            } catch (error) {
+                console.error(error);
+                bot.sendMessage(chatId, 'Error saving reminder.');
+            }
+            delete userStates[chatId];
         }
-
-        const newReminder = {
-            id: crypto.randomUUID(),
-            title: state.title,
-            description: 'Added via Telegram Bot',
-            dueDate: finalDate.toISOString(),
-            category: 'GENERAL',
-            isDone: false
-        };
-
-        try {
-            await supabase.from('reminders').insert([newReminder]);
-            bot.sendMessage(chatId, `✅ Reminder added successfully!\n*${state.title}* due on ${finalDate.toLocaleString()}`, {
-                parse_mode: 'Markdown',
-                reply_markup: { inline_keyboard: [[{ text: '🔙 Back to Main Menu', callback_data: 'main_menu' }]] }
-            });
-
-            // Notification will be handled by the polling mechanism
-        } catch (error) {
-            console.error(error);
-            bot.sendMessage(chatId, 'Error saving reminder.');
-        }
-        delete userStates[chatId];
-    }
-    else if (state.step === 'wait_snooze_custom') {
+    } else if (state.step === 'wait_snooze_custom') {
         const hours = parseFloat(msg.text);
         if (isNaN(hours) || hours <= 0) {
             bot.sendMessage(chatId, 'Please enter a valid number of hours (e.g., 2 or 1.5).');

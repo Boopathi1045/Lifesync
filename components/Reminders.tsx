@@ -58,6 +58,11 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, setReminders, snoozePr
     e.preventDefault();
     if (!form.title.trim()) return;
 
+    // Create date assuming input is IST, and convert to UTC ISO string
+    const istDateString = `${form.date}T${form.time}:00+05:30`;
+    const utcDate = new Date(istDateString);
+    const dueDateISO = utcDate.toISOString();
+
     const previousReminders = [...reminders];
     let updatedReminder: Reminder;
 
@@ -66,7 +71,7 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, setReminders, snoozePr
         id: Math.random().toString(36).substr(2, 9),
         title: form.title,
         description: form.description,
-        dueDate: `${form.date}T${form.time}`,
+        dueDate: dueDateISO,
         category: form.category,
         isDone: false
       };
@@ -76,7 +81,7 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, setReminders, snoozePr
         ...reminders.find(r => r.id === form.id)!,
         title: form.title,
         description: form.description,
-        dueDate: `${form.date}T${form.time}`,
+        dueDate: dueDateISO,
         category: form.category
       };
       setReminders(prev => prev.map(r => r.id === form.id ? updatedReminder : r));
