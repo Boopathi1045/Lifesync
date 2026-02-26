@@ -525,21 +525,26 @@ const getMainMenuKeyboard = () => ({
 
 // Start & Menu command
 bot.onText(/\/(start|menu)/, (msg) => {
-    const chatId = msg.chat.id;
+    const chatId = msg.chat.id.toString(); // Ensure chatId is a string for userStates
+    const state = userStates[chatId];
 
-    if (ownerId && chatId.toString() !== ownerId) {
-        bot.sendMessage(chatId, 'Sorry, you are not authorized to use this bot.');
-        return;
-    }
+    // If user is not in a specific menu state, route to AI
+    if (!state) {
+        if (ownerId && chatId !== ownerId) {
+            bot.sendMessage(chatId, 'Sorry, you are not authorized to use this bot.');
+            return;
+        }
 
-    const welcomeMessage = `
+        // Display the main menu when /start or /menu is used and no state is active
+        const welcomeMessage = `
 Welcome to LifeSync Bot! 🚀
 
 🌐 *Web App URL:* https://lifesync-sand.vercel.app/
 Please select a module below to get started:
 `;
 
-    bot.sendMessage(chatId, welcomeMessage, getMainMenuKeyboard());
+        bot.sendMessage(chatId, welcomeMessage, getMainMenuKeyboard());
+    }
 });
 
 // Help command
