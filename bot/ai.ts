@@ -89,7 +89,7 @@ export async function parseIntentFromText(text: string) {
     }
 
     const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
+        model: "gemini-3-flash-preview",
         generationConfig: {
             responseMimeType: "application/json",
             responseSchema: intentSchema,
@@ -116,7 +116,7 @@ export async function parseIntentFromAudio(fileUrl: string) {
     const base64Audio = await getAudioBase64(fileUrl);
 
     const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
+        model: "gemini-3-flash-preview",
         generationConfig: {
             responseMimeType: "application/json",
             responseSchema: intentSchema,
