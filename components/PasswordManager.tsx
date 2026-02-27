@@ -17,6 +17,9 @@ const PasswordManager: React.FC<PasswordManagerProps> = ({ passwords, setPasswor
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [pendingEntryId, setPendingEntryId] = useState<string | null>(null);
 
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [entryToDelete, setEntryToDelete] = useState<string | null>(null);
+
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isHistoryViewOpen, setIsHistoryViewOpen] = useState(false);
@@ -109,17 +112,23 @@ const PasswordManager: React.FC<PasswordManagerProps> = ({ passwords, setPasswor
     }
   };
 
-  const deleteEntry = async (id: string) => {
-    if (confirm('Are you sure you want to delete this vault entry?')) {
-      const previous = [...passwords];
-      try {
-        setPasswords(prev => prev.filter(p => p.id !== id));
-        setSelectedEntry(null);
-        await removeFromDB('passwords', id);
-      } catch (err) {
-        setPasswords(previous);
-        alert('Failed to delete from cloud.');
-      }
+  const confirmDelete = (id: string) => {
+    setEntryToDelete(id);
+    setIsDeleteModalOpen(true);
+  };
+
+  const executeDelete = async () => {
+    if (!entryToDelete) return;
+    const previous = [...passwords];
+    try {
+      setPasswords(prev => prev.filter(p => p.id !== entryToDelete));
+      setSelectedEntry(null);
+      await removeFromDB('passwords', entryToDelete);
+      setIsDeleteModalOpen(false);
+      setEntryToDelete(null);
+    } catch (err) {
+      setPasswords(previous);
+      alert('Failed to delete from cloud.');
     }
   };
 
@@ -221,7 +230,7 @@ const PasswordManager: React.FC<PasswordManagerProps> = ({ passwords, setPasswor
                   <button onClick={openEdit} className="p-3 bg-slate-100 rounded-full hover:bg-slate-200 transition-all flex items-center justify-center text-slate-500 hover:text-slate-800">
                     <span className="material-symbols-rounded text-lg">edit</span>
                   </button>
-                  <button onClick={() => deleteEntry(selectedEntry.id)} className="p-3 bg-rose-50 text-rose-500 rounded-full hover:bg-rose-100 transition-all flex items-center justify-center">
+                  <button onClick={() => confirmDelete(selectedEntry.id)} className="p-3 bg-rose-50 text-rose-500 rounded-full hover:bg-rose-100 transition-all flex items-center justify-center">
                     <span className="material-symbols-rounded text-lg">delete</span>
                   </button>
                 </div>
@@ -437,6 +446,33 @@ const PasswordManager: React.FC<PasswordManagerProps> = ({ passwords, setPasswor
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 bg-[#5f7f8a]/80 backdrop-blur-sm z-[250] flex items-center justify-center p-6 text-center">
+          <div className="bg-white w-full max-w-sm rounded-[3rem] p-12 shadow-2xl animate-in zoom-in duration-300">
+            <div className="size-20 bg-rose-50 text-rose-500 rounded-full mx-auto flex items-center justify-center text-4xl mb-6">
+              <span className="material-symbols-rounded">delete_forever</span>
+            </div>
+            <h3 className="text-2xl font-black mb-4 text-slate-900">Delete Entry?</h3>
+            <p className="text-sm text-slate-500 font-medium mb-8">This action cannot be undone. Preceding password history will also be lost.</p>
+            <div className="flex gap-4">
+              <button
+                onClick={() => { setIsDeleteModalOpen(false); setEntryToDelete(null); }}
+                className="flex-1 font-black text-slate-500 hover:bg-slate-50 rounded-2xl py-4 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={executeDelete}
+                className="flex-1 bg-rose-500 text-white py-4 rounded-2xl font-black shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all"
+              >
+                Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

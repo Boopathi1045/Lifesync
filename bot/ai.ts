@@ -127,21 +127,7 @@ async function callOpenRouterFallback(prompt: string, history: ChatTurn[] = [], 
         throw new Error("OPENROUTER_API_KEY is not configured.");
     }
 
-    // For OpenRouter structured output, we provide the schema within the system prompt or via response_format depending on model support.
-    // Mistral supports structured output, we will just give strict instructions.
-
-    let content: any = prompt;
-
-    // Note: Audio support in openrouter depends on the model. 
-    // If mistral-nemo doesn't support audio directly via vision/multimodal messages, 
-    // it might fail here. We will pass text instructions for now.
-    if (base64Audio) {
-        // Just logging that audio was passed, but many open router models are text-only.
-        console.log("Audio fallback to OpenRouter - OpenRouter might not natively transcribe audio unless using specific multimodal models like gemini via openrouter.");
-        content = "Please process this voice message (Note: direct audio processing may not work optimally on text models).";
-    }
-
-    const messages = [
+    const messages: any[] = [
         {
             role: "system",
             content: `${systemInstruction}\n\nIMPORTANT: You MUST respond ONLY with a valid JSON object matching the requested schema. No other text.`
@@ -157,13 +143,34 @@ async function callOpenRouterFallback(prompt: string, history: ChatTurn[] = [], 
     }
 
     // Add current user prompt
-    messages.push({
-        role: "user",
-        content: content
-    });
+    if (base64Audio) {
+        console.log("Adding audio data to OpenRouter fallback payload...");
+        messages.push({
+            role: "user",
+            content: [
+                {
+                    type: "text",
+                    text: prompt
+                },
+                {
+                    // OpenRouter maps image_url with an audio data URI to the native multimodal audio block
+                    type: "image_url",
+                    image_url: {
+                        url: `data:audio/ogg;base64,${base64Audio}`
+                    }
+                }
+            ]
+        });
+    } else {
+        messages.push({
+            role: "user",
+            content: prompt
+        });
+    }
 
     const payload = {
-        model: "mistralai/mistral-nemo",
+        // Using google/gemini-1.5-flash as the most consistent backup model that supports audio natively
+        model: "google/gemini-1.5-flash",
         messages: messages,
         response_format: { type: "json_object" }
     };
@@ -183,7 +190,7 @@ async function callOpenRouterFallback(prompt: string, history: ChatTurn[] = [], 
         return JSON.parse(responseText);
     } catch (error: any) {
         console.error("OpenRouter API Error:", error?.response?.data || error.message);
-        throw error;
+        return { intent: "UNKNOWN", replyText: "Sorry, I am currently facing network issues on both my primary and backup servers." };
     }
 }
 

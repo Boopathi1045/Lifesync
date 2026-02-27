@@ -28,7 +28,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
   saveToDB
 }) => {
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'ACCOUNTS' | 'TRANSACTIONS' | 'SPLITS' | 'SUBS'>('OVERVIEW');
-  const [modal, setModal] = useState<'ADD_ACCOUNT' | 'EDIT_ACCOUNT' | 'ADD_EXPENSE' | 'ADD_TRANSFER' | 'SPLIT_BILL' | 'ADD_FRIEND' | 'CONFIRM_DELETE' | 'ADD_SUB' | 'SETTLE_FRIEND' | 'MANAGE_PURPOSES' | 'ADD_INCOME' | null>(null);
+  const [modal, setModal] = useState<'ADD_ACCOUNT' | 'EDIT_ACCOUNT' | 'ADD_EXPENSE' | 'ADD_TRANSFER' | 'SPLIT_BILL' | 'ADD_FRIEND' | 'CONFIRM_DELETE' | 'CONFIRM_DELETE_TX' | 'CONFIRM_DELETE_SUB' | 'CONFIRM_DELETE_FRIEND' | 'CONFIRM_UPDATE_ACC' | 'ADD_SUB' | 'SETTLE_FRIEND' | 'MANAGE_PURPOSES' | 'ADD_INCOME' | null>(null);
 
   // Form States
   const [accForm, setAccForm] = useState({ id: '', name: '', type: AccountType.BANK, balance: 0 });
@@ -82,10 +82,12 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
 
   const handleUpdateAccount = async (e: React.FormEvent) => {
     e.preventDefault();
+    setModal('CONFIRM_UPDATE_ACC');
+  };
+
+  const executeUpdateAccount = async () => {
     const oldAccount = accounts.find(a => a.id === accForm.id);
     if (!oldAccount) return;
-
-    if (!confirm(`Confirm changes for "${accForm.name}"? Balance change will be logged as an adjustment.`)) return;
 
     const balanceDiff = accForm.balance - oldAccount.balance;
     const previousAccounts = [...accounts];
@@ -452,41 +454,65 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
     }
   };
 
-  const deleteTransaction = async (id: string) => {
-    if (!confirm('Delete this transaction record? This will NOT revert balance changes.')) return;
+  const deleteTransaction = (id: string) => {
+    setPendingTargetId(id);
+    setModal('CONFIRM_DELETE_TX');
+  };
+
+  const executeDeleteTransaction = async () => {
+    if (!pendingTargetId) return;
+    const id = pendingTargetId;
     const previous = [...transactions];
     try {
       setTransactions(prev => prev.filter(t => t.id !== id));
       await removeFromDB(TABLES.TRANSACTIONS, id);
+      setModal(null);
+      setPendingTargetId(null);
     } catch (err) {
       setTransactions(previous);
       alert('Failed to delete transaction.');
     }
   };
 
-  const deleteSubscription = async (id: string) => {
-    if (!confirm('Cancel and delete this subscription?')) return;
+  const deleteSubscription = (id: string) => {
+    setPendingTargetId(id);
+    setModal('CONFIRM_DELETE_SUB');
+  };
+
+  const executeDeleteSubscription = async () => {
+    if (!pendingTargetId) return;
+    const id = pendingTargetId;
     const previous = [...subscriptions];
     try {
       setSubscriptions(prev => prev.filter(s => s.id !== id));
       await removeFromDB(TABLES.SUBSCRIPTIONS, id);
+      setModal(null);
+      setPendingTargetId(null);
     } catch (err) {
       setSubscriptions(previous);
       alert('Failed to delete subscription.');
     }
   };
 
-  const deleteFriend = async (id: string) => {
+  const deleteFriend = (id: string) => {
     const friend = friends.find(f => f.id === id);
     if (friend && friend.netBalance !== 0) {
       alert('Cannot delete a friend with a non-zero balance. Settle first.');
       return;
     }
-    if (!confirm('Remove this contact?')) return;
+    setPendingTargetId(id);
+    setModal('CONFIRM_DELETE_FRIEND');
+  };
+
+  const executeDeleteFriend = async () => {
+    if (!pendingTargetId) return;
+    const id = pendingTargetId;
     const previous = [...friends];
     try {
       setFriends(prev => prev.filter(f => f.id !== id));
       await removeFromDB(TABLES.FRIENDS, id);
+      setModal(null);
+      setPendingTargetId(null);
     } catch (err) {
       setFriends(previous);
       alert('Failed to delete contact.');
@@ -776,6 +802,21 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
         </div>
       )}
 
+      {/* Update Account Confirmation */}
+      {modal === 'CONFIRM_UPDATE_ACC' && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[250] flex items-center justify-center p-6 text-center">
+          <div className="bg-white dark:bg-[#1c2333] w-full max-w-sm rounded-[3rem] p-12 border border-blue-500/20 shadow-2xl animate-in zoom-in duration-300">
+            <div className="size-20 bg-blue-500/10 text-blue-500 rounded-full mx-auto flex items-center justify-center text-3xl mb-6 font-bold">!</div>
+            <h3 className="text-2xl font-black mb-4">Confirm Changes</h3>
+            <p className="text-sm text-slate-500 leading-relaxed mb-8">Balance change will be logged as an adjustment for "{accForm.name}".</p>
+            <div className="flex gap-4">
+              <button onClick={() => setModal('EDIT_ACCOUNT')} className="flex-1 font-black text-slate-400">Back</button>
+              <button onClick={executeUpdateAccount} className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black shadow-lg">Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Delete Confirmation */}
       {modal === 'CONFIRM_DELETE' && (
         <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[250] flex items-center justify-center p-6 text-center">
@@ -786,6 +827,51 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
             <div className="flex gap-4">
               <button onClick={() => setModal(null)} className="flex-1 font-black text-slate-400">Abort</button>
               <button onClick={handleDeleteAccount} className="flex-1 bg-rose-500 text-white py-4 rounded-2xl font-black shadow-lg">Delete Forever</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Transaction Confirmation */}
+      {modal === 'CONFIRM_DELETE_TX' && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[250] flex items-center justify-center p-6 text-center">
+          <div className="bg-white dark:bg-[#1c2333] w-full max-w-sm rounded-[3rem] p-12 border border-rose-500/20 shadow-2xl">
+            <div className="size-20 bg-rose-500/10 text-rose-500 rounded-full mx-auto flex items-center justify-center text-3xl mb-6 font-bold">!</div>
+            <h3 className="text-2xl font-black mb-4">Delete Transaction?</h3>
+            <p className="text-sm text-slate-500 leading-relaxed mb-8">This will NOT revert any associated balance changes.</p>
+            <div className="flex gap-4">
+              <button onClick={() => setModal(null)} className="flex-1 font-black text-slate-400">Abort</button>
+              <button onClick={executeDeleteTransaction} className="flex-1 bg-rose-500 text-white py-4 rounded-2xl font-black shadow-lg">Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Subscription Confirmation */}
+      {modal === 'CONFIRM_DELETE_SUB' && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[250] flex items-center justify-center p-6 text-center">
+          <div className="bg-white dark:bg-[#1c2333] w-full max-w-sm rounded-[3rem] p-12 border border-rose-500/20 shadow-2xl">
+            <div className="size-20 bg-rose-500/10 text-rose-500 rounded-full mx-auto flex items-center justify-center text-3xl mb-6 font-bold">!</div>
+            <h3 className="text-2xl font-black mb-4">Cancel Subscription?</h3>
+            <p className="text-sm text-slate-500 leading-relaxed mb-8">This clears the subscription from your records.</p>
+            <div className="flex gap-4">
+              <button onClick={() => setModal(null)} className="flex-1 font-black text-slate-400">Abort</button>
+              <button onClick={executeDeleteSubscription} className="flex-1 bg-rose-500 text-white py-4 rounded-2xl font-black shadow-lg">Cancel Sub</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Friend Confirmation */}
+      {modal === 'CONFIRM_DELETE_FRIEND' && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[250] flex items-center justify-center p-6 text-center">
+          <div className="bg-white dark:bg-[#1c2333] w-full max-w-sm rounded-[3rem] p-12 border border-rose-500/20 shadow-2xl">
+            <div className="size-20 bg-rose-500/10 text-rose-500 rounded-full mx-auto flex items-center justify-center text-3xl mb-6 font-bold">!</div>
+            <h3 className="text-2xl font-black mb-4">Remove Contact?</h3>
+            <p className="text-sm text-slate-500 leading-relaxed mb-8">This removes the friend and allows no future splits.</p>
+            <div className="flex gap-4">
+              <button onClick={() => setModal(null)} className="flex-1 font-black text-slate-400">Abort</button>
+              <button onClick={executeDeleteFriend} className="flex-1 bg-rose-500 text-white py-4 rounded-2xl font-black shadow-lg">Remove</button>
             </div>
           </div>
         </div>
