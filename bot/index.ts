@@ -818,35 +818,26 @@ ${progress}
                 show_alert: false
             }).catch(console.error);
 
-            // Re-render habit menu
-            const progress = '💧'.repeat(newIntake) + '⚪'.repeat(Math.max(0, 8 - newIntake));
-            const habitMsg = `
-💧 *Habit Tracker (Today)*
-
-*Water Intake:* ${newIntake} / 8 glasses
-${progress}
-            `;
-
-            await bot.editMessageText(habitMsg, {
+            // Change the message text instead of rendering the menu again
+            bot.editMessageText(data === 'action_add_water' ? `✅ Hydrated! Total today: ${newIntake}/8 glasses.` : `⏭️ Skipped this water reminder.`, {
                 chat_id: chatId,
-                message_id: query.message.message_id,
-                parse_mode: 'Markdown',
-                reply_markup: {
-                    inline_keyboard: [
-                        [{ text: '➕ Add 1 Water', callback_data: 'action_add_water' }, { text: '➖ Skip', callback_data: 'action_skip_water' }],
-                        [{ text: '🔙 Back to Main Menu', callback_data: 'main_menu' }]
-                    ]
-                }
+                message_id: query.message.message_id
             });
-        } else if (data.startsWith('action_wake_up_')) {
-            const timeVal = data.replace('action_wake_up_', '');
-            const { todayStr } = getISTDateInfo();
+        } else if (data === 'action_wake_up_now' || data.startsWith('action_wake_up_')) {
+            let timeVal = '';
+            const { todayStr, hour, minute } = getISTDateInfo();
+
+            if (data === 'action_wake_up_now') {
+                timeVal = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+            } else {
+                timeVal = data.replace('action_wake_up_', '');
+            }
 
             await supabase
                 .from('daily_habits')
                 .upsert({ date: todayStr, wake_up_time: timeVal }, { onConflict: 'date' });
 
-            bot.editMessageText(`🌅 Good morning! Wake up time set to ${timeVal}. I'll remind you to drink water every 2 hours.`, {
+            bot.editMessageText(`🌅 Good morning! Wake up time set to ${timeVal}. I'll remind you to drink water exactly every 2 hours.`, {
                 chat_id: chatId,
                 message_id: query.message.message_id
             });
@@ -1293,6 +1284,45 @@ ${progress}
     }
 });
 
+// Delete the previous menu if there is one active for the user
+const activeMenus: Record<string, number> = {};
+
+bot.onText(/\/menu/, async (msg) => {
+    if (!isAuthorized(msg)) return;
+    const chatId = msg.chat.id.toString();
+
+    // Delete existing menu if present
+    if (activeMenus[chatId]) {
+        try {
+            await bot.deleteMessage(chatId, activeMenus[chatId]);
+        } catch (e) {
+            // Message might already be deleted or too old
+        }
+        delete activeMenus[chatId];
+    }
+
+    try {
+        const sentMsg = await bot.sendMessage(chatId, '🤖 *LifeSync AI Bot*\n\nSelect an option below or type a message:', {
+            parse_mode: 'Markdown',
+            reply_markup: getMainMenuKeyboard() as any
+        });
+
+        activeMenus[chatId] = sentMsg.message_id;
+
+        // Auto delete after 1 minute of inactivity
+        setTimeout(async () => {
+            if (activeMenus[chatId] === sentMsg.message_id) {
+                try {
+                    await bot.deleteMessage(chatId, sentMsg.message_id);
+                } catch (e) { }
+                delete activeMenus[chatId];
+            }
+        }, 60000);
+    } catch (error) {
+        console.error('Error sending menu:', error);
+    }
+});
+
 // View reminders
 bot.onText(/\/reminders/, async (msg) => {
     if (!isAuthorized(msg)) return;
@@ -1558,6 +1588,7 @@ const checkDailyPrompts = async () => {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
+                        [{ text: '🌅 I just woke up now', callback_data: 'action_wake_up_now' }],
                         [{ text: '06:00 AM', callback_data: 'action_wake_up_06:00' }, { text: '07:00 AM', callback_data: 'action_wake_up_07:00' }],
                         [{ text: '08:00 AM', callback_data: 'action_wake_up_08:00' }, { text: '09:00 AM', callback_data: 'action_wake_up_09:00' }]
                     ]
@@ -1600,15 +1631,18 @@ const checkWaterIntake = async () => {
     // If not awake yet, or already asleep, do not send water reminders
     if (!habit || !habit.wake_up_time || habit.sleep_time) return;
 
-    // Calculate hours since wake up
+    // Calculate exact minutes since wake up
     const [wakeHourTemp, wakeMinTemp] = habit.wake_up_time.split(':').map(Number);
-    // Rough calc: wait until at least the next hour to start counting
-    const hoursSinceWake = hour - wakeHourTemp;
+    const wakeTimeInMins = wakeHourTemp * 60 + wakeMinTemp;
 
-    // Trigger every 2 hours, starting 2 hours AFTER wake up
-    // e.g. Woke at 6, triggers at 8, 10, 12...
-    // Only trigger if it's strictly a 2-hour interval and we haven't asked this specific hour
-    if (hoursSinceWake > 0 && hoursSinceWake % 2 === 0) {
+    const { minute } = getISTDateInfo();
+    const currentTimeInMins = hour * 60 + minute;
+
+    const minutesSinceWake = currentTimeInMins - wakeTimeInMins;
+
+    // Trigger exactly every 2 hours (120 mins). We allow a small 1-minute window
+    // since we poll every minute.
+    if (minutesSinceWake > 0 && minutesSinceWake % 120 === 0) {
         if (lastWaterReminderDate !== todayStr || lastWaterReminderHour !== hour) {
             lastWaterReminderDate = todayStr;
             lastWaterReminderHour = hour;
