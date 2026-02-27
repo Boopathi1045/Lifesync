@@ -59,6 +59,27 @@ interface UserState {
 }
 const userStates: Record<string, UserState> = {};
 
+// Helper to get consistent IST current date/time
+function getISTDateInfo() {
+    const now = new Date();
+    // Get the localized date/time string in IST
+    const istString = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
+    const istDate = new Date(istString);
+
+    // YYYY-MM-DD padded explicitly for reliable DB dates
+    const year = istDate.getFullYear();
+    const month = String(istDate.getMonth() + 1).padStart(2, '0');
+    const day = String(istDate.getDate()).padStart(2, '0');
+    const todayStr = `${year}-${month}-${day}`;
+
+    return {
+        istDate,  // Date object representing exact local IST time (note: JS Date behaves like local if we construct it this way)
+        todayStr, // YYYY-MM-DD
+        hour: istDate.getHours(),
+        minute: istDate.getMinutes()
+    };
+}
+
 // Import AI parsers
 import { parseIntentFromText, parseIntentFromAudio } from './ai';
 
@@ -141,12 +162,12 @@ bot.on('message', async (msg) => {
                     bot.sendMessage(chatId, "You need to create at least one account in the web app first.");
                     return;
                 }
-
+                const { todayStr } = getISTDateInfo();
                 const newTx = {
                     id: crypto.randomUUID(),
                     amount: tx.amount,
                     purpose: tx.purpose,
-                    date: new Date().toISOString().split('T')[0],
+                    date: todayStr,
                     type: tx.type === 'INCOME' ? 'INCOME' : 'EXPENSE',
                     accountId: accountId
                 };
@@ -196,7 +217,7 @@ bot.on('message', async (msg) => {
                 };
 
                 await supabase.from('reminders').insert([newReminder]);
-                bot.sendMessage(chatId, `✅ Set reminder: *${r.title}* for ${finalDate.toLocaleString()}`, { parse_mode: 'Markdown' });
+                bot.sendMessage(chatId, `✅ Set reminder: *${r.title}* for ${finalDate.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })}`, { parse_mode: 'Markdown' });
             }
             else if (intent === 'ADD_WATCH_LATER' && aiResult.watchLater) {
                 const url = aiResult.watchLater.url || inputText;
@@ -204,13 +225,13 @@ bot.on('message', async (msg) => {
                     bot.sendMessage(chatId, "I didn't find a valid URL to save.");
                     return;
                 }
-
+                const { istDate } = getISTDateInfo();
                 const newItem = {
                     id: crypto.randomUUID(),
                     title: 'Saved via AI',
                     link: url,
                     isWatched: false,
-                    dateAdded: new Date().toISOString()
+                    dateAdded: istDate.toISOString()
                 };
 
                 await supabase.from('media_items').insert([newItem]);
@@ -236,7 +257,7 @@ bot.on('message', async (msg) => {
             }
             else if (intent === 'ADD_WATER' && aiResult.habit) {
                 const glasses = aiResult.habit.glasses || 1;
-                const todayStr = new Date().toISOString().split('T')[0];
+                const { todayStr } = getISTDateInfo();
                 const { data: habit } = await supabase.from('daily_habits').select('*').eq('date', todayStr).single();
                 const newIntake = (habit ? habit.water_intake : 0) + glasses;
 
@@ -245,13 +266,13 @@ bot.on('message', async (msg) => {
             }
             else if (intent === 'SET_WAKEUP' && aiResult.habit?.time) {
                 const timeStr = aiResult.habit.time;
-                const todayStr = new Date().toISOString().split('T')[0];
+                const { todayStr } = getISTDateInfo();
                 await supabase.from('daily_habits').upsert({ date: todayStr, wake_up_time: timeStr }, { onConflict: 'date' });
                 bot.sendMessage(chatId, `🌅 Got it! Wake up time set to ${timeStr}.`);
             }
             else if (intent === 'SET_SLEEP' && aiResult.habit?.time) {
                 const timeStr = aiResult.habit.time;
-                const todayStr = new Date().toISOString().split('T')[0];
+                const { todayStr } = getISTDateInfo();
                 await supabase.from('daily_habits').upsert({ date: todayStr, sleep_time: timeStr }, { onConflict: 'date' });
                 bot.sendMessage(chatId, `🌙 Sleep well! Logged sleep time as ${timeStr}.`);
             }
@@ -302,11 +323,12 @@ bot.on('message', async (msg) => {
         state.purpose = msg.text.trim();
 
         // Execute the transaction
+        const { todayStr } = getISTDateInfo();
         const newTx = {
             id: crypto.randomUUID(),
             amount: state.amount,
             purpose: state.purpose,
-            date: new Date().toISOString().split('T')[0],
+            date: todayStr,
             type: state.action === 'expense' ? 'EXPENSE' : 'INCOME',
             accountId: state.accountId
         };
@@ -362,7 +384,16 @@ bot.on('message', async (msg) => {
 
         // Store intermediate date string instead of object to avoid timezone issues
         userStates[chatId].dateObj = finalDate;
-        userStates[chatId].dateStr = dateStr !== 'none' && dateStr !== 'today' ? dateStr : finalDate.toISOString().split('T')[0];
+
+        let dayFormat = '';
+        if (dateStr !== 'none' && dateStr !== 'today') {
+            dayFormat = dateStr;
+        } else {
+            const { todayStr } = getISTDateInfo();
+            dayFormat = todayStr;
+        }
+
+        userStates[chatId].dateStr = dayFormat;
         state.step = 'wait_reminder_time';
         bot.sendMessage(chatId, `Date set to ${userStates[chatId].dateStr}.\n\nNow enter the time (HH:MM AM/PM) or in 24-hour format.\nAlternatively, type "none" to set it for the end of the day:`, {
             parse_mode: 'Markdown',
@@ -408,7 +439,7 @@ bot.on('message', async (msg) => {
 
             try {
                 await supabase.from('reminders').insert([newReminder]);
-                bot.sendMessage(chatId, `✅ Reminder added successfully!\n*${state.title}* due on ${finalDate.toLocaleString()}`, {
+                bot.sendMessage(chatId, `✅ Reminder added successfully!\n*${state.title}* due on ${finalDate.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })}`, {
                     parse_mode: 'Markdown',
                     reply_markup: { inline_keyboard: [[{ text: '🔙 Back to Main Menu', callback_data: 'main_menu' }]] }
                 });
@@ -451,12 +482,13 @@ bot.on('message', async (msg) => {
             return;
         }
 
+        const { istDate } = getISTDateInfo();
         const newItem = {
             id: crypto.randomUUID(),
             title: 'Saved from Telegram',
             link: url,
             isWatched: false,
-            dateAdded: new Date().toISOString()
+            dateAdded: istDate.toISOString()
         };
 
         try {
@@ -583,7 +615,7 @@ bot.on('callback_query', async (query) => {
                 .eq('isDone', false);
 
             // Fetch today's habit
-            const todayStr = new Date().toISOString().split('T')[0];
+            const { todayStr } = getISTDateInfo();
             const { data: habit } = await supabase
                 .from('daily_habits')
                 .select('*')
@@ -737,7 +769,7 @@ bot.on('callback_query', async (query) => {
         } else if (data === 'menu_habits') {
             bot.editMessageText('Loading Habit Tracker...', { chat_id: chatId, message_id: query.message.message_id });
 
-            const todayStr = new Date().toISOString().split('T')[0];
+            const { todayStr } = getISTDateInfo();
             const { data: habit } = await supabase
                 .from('daily_habits')
                 .select('*')
@@ -766,7 +798,7 @@ ${progress}
                 }
             });
         } else if (data === 'action_add_water' || data === 'action_skip_water') {
-            const todayStr = new Date().toISOString().split('T')[0];
+            const { todayStr } = getISTDateInfo();
             const { data: habit } = await supabase
                 .from('daily_habits')
                 .select('*')
@@ -808,7 +840,7 @@ ${progress}
             });
         } else if (data.startsWith('action_wake_up_')) {
             const timeVal = data.replace('action_wake_up_', '');
-            const todayStr = new Date().toISOString().split('T')[0];
+            const { todayStr } = getISTDateInfo();
 
             await supabase
                 .from('daily_habits')
@@ -819,9 +851,8 @@ ${progress}
                 message_id: query.message.message_id
             });
         } else if (data === 'action_sleep_now') {
-            const todayStr = new Date().toISOString().split('T')[0];
-            const now = new Date();
-            const timeVal = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            const { todayStr, hour, minute } = getISTDateInfo();
+            const timeVal = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
 
             await supabase
                 .from('daily_habits')
@@ -1427,7 +1458,7 @@ bot.onText(/\/snooze (.+) (\d+)/, async (msg, match) => {
 
         if (updateError) throw updateError;
 
-        bot.sendMessage(chatId, `💤 Snoozed! New due date: ${currentDue.toLocaleString()}`);
+        bot.sendMessage(chatId, `💤 Snoozed! New due date: ${currentDue.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })}`);
     } catch (error) {
         console.error(error);
         bot.sendMessage(chatId, 'Sorry, there was an error snoozing the reminder.');
@@ -1515,11 +1546,7 @@ let lastSleepPromptDate = '';
 
 const checkDailyPrompts = async () => {
     if (!ownerId) return;
-    const now = new Date();
-    const istString = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
-    const istDate = new Date(istString);
-    const hour = istDate.getHours();
-    const todayStr = istDate.toISOString().split('T')[0];
+    const { hour, todayStr } = getISTDateInfo();
 
     // 6 AM Wake Up Prompt
     if (hour >= 6 && hour < 10 && lastWakePromptDate !== todayStr) {
@@ -1565,11 +1592,7 @@ const checkDailyPrompts = async () => {
 const checkWaterIntake = async () => {
     if (!ownerId) return;
 
-    const now = new Date();
-    const istString = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
-    const istDate = new Date(istString);
-    const hour = istDate.getHours();
-    const todayStr = istDate.toISOString().split('T')[0];
+    const { hour, todayStr } = getISTDateInfo();
 
     // Fetch today's habit
     const { data: habit } = await supabase.from('daily_habits').select('*').eq('date', todayStr).single();
