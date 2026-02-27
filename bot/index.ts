@@ -1,6 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import axios from 'axios';
 import { Reminder, ReminderCategory } from '../types';
 
 // Load environment variables
@@ -56,8 +57,12 @@ interface UserState {
     dateObj?: Date;
     dateStr?: string;
     reminderId?: string;
+    actionId?: string;
+    payload?: any;
 }
 const userStates: Record<string, UserState> = {};
+const activeMenus: Record<string, number> = {};
+const activeMenuTimeouts: Record<string, NodeJS.Timeout> = {};
 
 // Helper to get consistent IST current date/time
 function getISTDateInfo() {
@@ -81,7 +86,43 @@ function getISTDateInfo() {
 }
 
 // Import AI parsers
-import { parseIntentFromText, parseIntentFromAudio } from './ai';
+import { parseIntentFromText, parseIntentFromAudio, ChatTurn } from './ai';
+
+const chatMemory: Record<string, ChatTurn[]> = {};
+
+function addMemory(chatId: string, role: "user" | "model", text: string) {
+    if (!text) return;
+    if (!chatMemory[chatId]) chatMemory[chatId] = [];
+    chatMemory[chatId].push({ role, parts: [{ text }] });
+    // Keep only last 4 turns (2 user, 2 bot) to manage tokens
+    if (chatMemory[chatId].length > 4) {
+        chatMemory[chatId].shift();
+    }
+}
+
+async function executeConfirmedAction(chatId: string | number, state: UserState, botInstance: any, messageId: any) {
+    try {
+        if (state.action === 'delete_reminder') {
+            await supabase.from('reminders').delete().eq('id', state.actionId);
+            botInstance.editMessageText('✅ Reminder deleted.', { chat_id: chatId, message_id: messageId });
+        } else if (state.action === 'delete_transaction') {
+            await supabase.from('transactions').delete().eq('id', state.actionId);
+            botInstance.editMessageText('✅ Transaction deleted.', { chat_id: chatId, message_id: messageId });
+        } else if (state.action === 'delete_account') {
+            await supabase.from('accounts').delete().eq('id', state.actionId);
+            botInstance.editMessageText('✅ Account deleted.', { chat_id: chatId, message_id: messageId });
+        } else if (state.action === 'delete_sub') {
+            await supabase.from('subscriptions').delete().eq('id', state.actionId);
+            botInstance.editMessageText('✅ Subscription deleted.', { chat_id: chatId, message_id: messageId });
+        } else if (state.action === 'modify_balance') {
+            await supabase.from('accounts').update({ balance: state.payload?.balance }).eq('id', state.actionId);
+            botInstance.editMessageText(`✅ Account balance updated to ₹${state.payload?.balance}.`, { chat_id: chatId, message_id: messageId });
+        }
+    } catch (error) {
+        console.error("Execute confirmation error", error);
+        botInstance.editMessageText('❌ Failed to execute action.', { chat_id: chatId, message_id: messageId });
+    }
+}
 
 // Middleware to check if the user is authorized
 const isAuthorized = (msg: TelegramBot.Message): boolean => {
@@ -144,114 +185,204 @@ bot.on('message', async (msg) => {
 
             if (inputType === 'voice') {
                 const fileLink = await bot.getFileLink(fileId);
-                aiResult = await parseIntentFromAudio(fileLink);
+                aiResult = await parseIntentFromAudio(fileLink, chatMemory[chatId]);
+                addMemory(chatId, "user", "[Voice Message]");
             } else {
-                aiResult = await parseIntentFromText(inputText);
+                aiResult = await parseIntentFromText(inputText, chatMemory[chatId]);
+                addMemory(chatId, "user", inputText);
+            }
+
+            if (aiResult.replyText) {
+                addMemory(chatId, "model", aiResult.replyText);
             }
 
             const intent = aiResult.intent;
 
-            if (intent === 'ADD_TRANSACTION' && aiResult.transaction) {
+            if ((intent === 'ADD_TRANSACTION' || intent === 'ADD_INCOME' || intent === 'ADD_EXPENSE') && aiResult.transaction) {
                 const tx = aiResult.transaction;
                 if (!tx.amount || !tx.purpose) {
-                    bot.sendMessage(chatId, "I understood it's a transaction, but could you specify the amount and purpose?");
+                    bot.sendMessage(chatId, "Please specify the exact amount and purpose for the transaction.", { reply_markup: { remove_keyboard: true } });
                     return;
                 }
                 const accountId = await resolveAccount(tx.accountHint);
-                if (!accountId) {
-                    bot.sendMessage(chatId, "You need to create at least one account in the web app first.");
-                    return;
-                }
+                if (!accountId) { bot.sendMessage(chatId, "You need to create at least one account in the web app first."); return; }
                 const { todayStr } = getISTDateInfo();
-                const newTx = {
-                    id: crypto.randomUUID(),
-                    amount: tx.amount,
-                    purpose: tx.purpose,
-                    date: todayStr,
-                    type: tx.type === 'INCOME' ? 'INCOME' : 'EXPENSE',
-                    accountId: accountId
-                };
-
+                const txType = intent === 'ADD_INCOME' ? 'INCOME' : (intent === 'ADD_EXPENSE' ? 'EXPENSE' : (tx.type === 'INCOME' ? 'INCOME' : 'EXPENSE'));
+                const newTx = { id: crypto.randomUUID(), amount: tx.amount, purpose: tx.purpose, date: todayStr, type: txType, accountId: accountId };
                 await supabase.from('transactions').insert([newTx]);
 
-                // Update Account balance
                 const { data: acc } = await supabase.from('accounts').select('*').eq('id', accountId).single();
                 if (acc) {
-                    const newBalance = newTx.type === 'EXPENSE'
-                        ? Number(acc.balance) - Number(tx.amount)
-                        : Number(acc.balance) + Number(tx.amount);
-
-                    const flowUpdate = newTx.type === 'EXPENSE'
-                        ? { balance: newBalance, totalOutflow: Number(acc.totalOutflow) + Number(tx.amount) }
-                        : { balance: newBalance, totalInflow: Number(acc.totalInflow) + Number(tx.amount) };
-
+                    const newBalance = txType === 'EXPENSE' ? Number(acc.balance) - Number(tx.amount) : Number(acc.balance) + Number(tx.amount);
+                    const flowUpdate = txType === 'EXPENSE' ? { balance: newBalance, totalOutflow: Number(acc.totalOutflow) + Number(tx.amount) } : { balance: newBalance, totalInflow: Number(acc.totalInflow) + Number(tx.amount) };
                     await supabase.from('accounts').update(flowUpdate).eq('id', accountId);
                 }
 
-                bot.sendMessage(chatId, `✅ Logged ${newTx.type} of ₹${tx.amount} for "${tx.purpose}".\nAvailable balance updated.`);
+                bot.sendMessage(chatId, `✅ Logged ${txType} of ₹${tx.amount} for "${tx.purpose}".`);
+            }
+            else if (intent === 'ADD_TRANSFER' && aiResult.transaction) {
+                const tx = aiResult.transaction;
+                if (!tx.amount || !tx.toAccountHint) { bot.sendMessage(chatId, "I need both an amount and a destination account for a transfer."); return; }
+                const fromAccountId = await resolveAccount(tx.accountHint);
+                const toAccountId = await resolveAccount(tx.toAccountHint);
+
+                if (!fromAccountId || !toAccountId) { bot.sendMessage(chatId, "I couldn't confidently identify both accounts. Please verify your account names."); return; }
+                const { todayStr } = getISTDateInfo();
+                const newTx = { id: crypto.randomUUID(), amount: tx.amount, purpose: tx.purpose || 'Transfer', date: todayStr, type: 'TRANSFER', accountId: fromAccountId, toAccountId: toAccountId };
+                await supabase.from('transactions').insert([newTx]);
+
+                const { data: fromAcc } = await supabase.from('accounts').select('balance, totalOutflow').eq('id', fromAccountId).single();
+                if (fromAcc) await supabase.from('accounts').update({ balance: Number(fromAcc.balance) - Number(tx.amount), totalOutflow: Number(fromAcc.totalOutflow) + Number(tx.amount) }).eq('id', fromAccountId);
+
+                const { data: toAcc } = await supabase.from('accounts').select('balance, totalInflow').eq('id', toAccountId).single();
+                if (toAcc) await supabase.from('accounts').update({ balance: Number(toAcc.balance) + Number(tx.amount), totalInflow: Number(toAcc.totalInflow) + Number(tx.amount) }).eq('id', toAccountId);
+
+                bot.sendMessage(chatId, `✅ Transferred ₹${tx.amount}.`);
+            }
+            else if (intent === 'DELETE_TRANSACTION' && aiResult.actionId) {
+                const keyword = aiResult.actionId.toLowerCase();
+                const { data: txs } = await supabase.from('transactions').select('*').order('date', { ascending: false }).limit(20);
+                const match = txs?.find(t => t.purpose.toLowerCase().includes(keyword));
+                if (!match) { bot.sendMessage(chatId, `Couldn't find a matching transaction recently for '${aiResult.actionId}'.`); return; }
+
+                userStates[chatId] = { step: 'pending_confirmation', action: 'delete_transaction', actionId: match.id };
+                bot.sendMessage(chatId, `⚠️ Delete transaction: *${match.purpose}* (₹${match.amount})?`, {
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: [[{ text: 'Yes, Delete', callback_data: 'confirm_action_yes' }, { text: 'No, Cancel', callback_data: 'confirm_action_no' }]] }
+                });
+            }
+            else if (intent === 'LIST_TRANSACTIONS') {
+                const { data: txs } = await supabase.from('transactions').select('*').order('date', { ascending: false }).limit(5);
+                if (!txs || txs.length === 0) { bot.sendMessage(chatId, "No recent transactions found."); return; }
+                let msg = '📋 *Recent Transactions*\n\n';
+                txs.forEach(t => { msg += `${t.type === 'EXPENSE' ? '📉' : (t.type === 'INCOME' ? '📈' : '🔄')} *${t.purpose}*\nAmount: ₹${t.amount} | Date: ${new Date(t.date).toLocaleDateString()}\n\n`; });
+                bot.sendMessage(chatId, msg, { parse_mode: 'Markdown' });
+            }
+            else if (intent === 'GET_FINANCE_OVERVIEW') {
+                const { data: accs } = await supabase.from('accounts').select('*');
+                let totalBal = 0; accs?.forEach(a => totalBal += Number(a.balance));
+                bot.sendMessage(chatId, `💰 *Finance Overview*\n\nTotal Balance: ₹${totalBal.toFixed(2)}\nTotal Accounts: ${accs?.length || 0}`, { parse_mode: 'Markdown' });
+            }
+            else if (intent === 'LIST_ACCOUNTS') {
+                const { data: accs } = await supabase.from('accounts').select('*').order('name');
+                if (!accs || accs.length === 0) { bot.sendMessage(chatId, "No accounts found."); return; }
+                let msg = '🏦 *Your Accounts*\n\n';
+                accs.forEach(a => { msg += `• *${a.name}* (${a.type}): ₹${a.balance}\n`; });
+                bot.sendMessage(chatId, msg, { parse_mode: 'Markdown' });
+            }
+            else if (intent === 'ADD_ACCOUNT' && aiResult.account) {
+                const a = aiResult.account;
+                if (!a.name || a.balance === undefined) { bot.sendMessage(chatId, "Please provide the account name and initial balance."); return; }
+                const newAcc = { id: crypto.randomUUID(), name: a.name, type: a.type || 'Bank Account', balance: a.balance, totalInflow: 0, totalOutflow: 0 };
+                await supabase.from('accounts').insert([newAcc]);
+                bot.sendMessage(chatId, `✅ Account *${a.name}* created with ₹${a.balance}.`, { parse_mode: 'Markdown' });
+            }
+            else if (intent === 'DELETE_ACCOUNT' && aiResult.actionId) {
+                const keyword = aiResult.actionId.toLowerCase();
+                const { data: accs } = await supabase.from('accounts').select('*');
+                const match = accs?.find(a => a.name.toLowerCase().includes(keyword));
+                if (!match) { bot.sendMessage(chatId, `Couldn't find an account matching '${aiResult.actionId}'.`); return; }
+
+                userStates[chatId] = { step: 'pending_confirmation', action: 'delete_account', actionId: match.id };
+                bot.sendMessage(chatId, `⚠️ Delete account: *${match.name}*? All its transactions might be affected.`, {
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: [[{ text: 'Yes, Delete', callback_data: 'confirm_action_yes' }, { text: 'No, Cancel', callback_data: 'confirm_action_no' }]] }
+                });
+            }
+            else if (intent === 'MODIFY_BALANCE' && aiResult.account && aiResult.actionId) {
+                const keyword = aiResult.actionId.toLowerCase();
+                const { data: accs } = await supabase.from('accounts').select('*');
+                const match = accs?.find(a => a.name.toLowerCase().includes(keyword));
+                if (!match) { bot.sendMessage(chatId, `Couldn't find an account matching '${aiResult.actionId}'.`); return; }
+                const newBal = aiResult.account.balance !== undefined ? aiResult.account.balance : 0;
+
+                userStates[chatId] = { step: 'pending_confirmation', action: 'modify_balance', actionId: match.id, payload: { balance: newBal } };
+                bot.sendMessage(chatId, `⚠️ Update balance of *${match.name}* from ₹${match.balance} to ₹${newBal}?`, {
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: [[{ text: 'Yes, Update', callback_data: 'confirm_action_yes' }, { text: 'No, Cancel', callback_data: 'confirm_action_no' }]] }
+                });
             }
             else if (intent === 'ADD_REMINDER' && aiResult.reminder) {
                 const r = aiResult.reminder;
-                if (!r.title) {
-                    bot.sendMessage(chatId, "I caught the reminder intent, but what exactly should I remind you about?");
-                    return;
-                }
+                if (!r.title) { bot.sendMessage(chatId, "I caught the reminder intent, but what exactly should I remind you about?"); return; }
 
                 let finalDate = new Date();
                 if (r.dateStr) {
                     const parsed = new Date(r.dateStr);
-                    if (!isNaN(parsed.getTime())) {
-                        finalDate = parsed;
-                    }
+                    if (!isNaN(parsed.getTime())) finalDate = parsed;
                 } else {
                     finalDate.setHours(23, 59, 59, 999);
                 }
 
-                const newReminder = {
-                    id: crypto.randomUUID(),
-                    title: r.title,
-                    description: 'Added via AI Assistant',
-                    dueDate: finalDate.toISOString(),
-                    category: 'GENERAL',
-                    isDone: false
-                };
-
+                const newReminder = { id: crypto.randomUUID(), title: r.title, description: 'Added via AI Assistant', dueDate: finalDate.toISOString(), category: 'GENERAL', isDone: false };
                 await supabase.from('reminders').insert([newReminder]);
                 bot.sendMessage(chatId, `✅ Set reminder: *${r.title}* for ${finalDate.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })}`, { parse_mode: 'Markdown' });
             }
+            else if (intent === 'LIST_REMINDERS') {
+                const { data: rems } = await supabase.from('reminders').select('*').eq('isDone', false).order('dueDate', { ascending: true }).limit(5);
+                if (!rems || rems.length === 0) { bot.sendMessage(chatId, "You have no pending reminders."); return; }
+                let msg = '🔔 *Upcoming Reminders*\n\n';
+                rems.forEach(r => { msg += `• *${r.title}* - ${new Date(r.dueDate).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })}\n`; });
+                bot.sendMessage(chatId, msg, { parse_mode: 'Markdown' });
+            }
+            else if (intent === 'DELETE_REMINDER' && aiResult.actionId) {
+                const keyword = aiResult.actionId.toLowerCase();
+                const { data: rems } = await supabase.from('reminders').select('*').eq('isDone', false).order('dueDate', { ascending: true }).limit(20);
+                const match = rems?.find(r => r.title.toLowerCase().includes(keyword));
+                if (!match) { bot.sendMessage(chatId, `Couldn't find a pending reminder matching '${aiResult.actionId}'.`); return; }
+
+                userStates[chatId] = { step: 'pending_confirmation', action: 'delete_reminder', actionId: match.id };
+                bot.sendMessage(chatId, `⚠️ Delete reminder: *${match.title}*?`, {
+                    parse_mode: 'Markdown',
+                    reply_markup: { inline_keyboard: [[{ text: 'Yes, Delete', callback_data: 'confirm_action_yes' }, { text: 'No, Cancel', callback_data: 'confirm_action_no' }]] }
+                });
+            }
+            else if (intent === 'EDIT_REMINDER' && aiResult.reminder && aiResult.actionId) {
+                const keyword = aiResult.actionId.toLowerCase();
+                const { data: rems } = await supabase.from('reminders').select('*').eq('isDone', false).order('dueDate', { ascending: true }).limit(20);
+                const match = rems?.find(r => r.title.toLowerCase().includes(keyword));
+                if (!match) { bot.sendMessage(chatId, `Couldn't find a pending reminder matching '${aiResult.actionId}'.`); return; }
+
+                const updates: any = {};
+                if (aiResult.reminder.newTitle) updates.title = aiResult.reminder.newTitle;
+                if (aiResult.reminder.newDateStr) {
+                    const parsed = new Date(aiResult.reminder.newDateStr);
+                    if (!isNaN(parsed.getTime())) updates.dueDate = parsed.toISOString();
+                }
+
+                if (Object.keys(updates).length > 0) {
+                    await supabase.from('reminders').update(updates).eq('id', match.id);
+                    bot.sendMessage(chatId, `✅ Updated reminder: *${updates.title || match.title}*`);
+                } else {
+                    bot.sendMessage(chatId, `I found the reminder but didn't catch what you wanted to change.`);
+                }
+            }
             else if (intent === 'ADD_WATCH_LATER' && aiResult.watchLater) {
                 const url = aiResult.watchLater.url || inputText;
-                if (!url.startsWith('http')) {
-                    bot.sendMessage(chatId, "I didn't find a valid URL to save.");
-                    return;
-                }
+                if (!url.startsWith('http')) { bot.sendMessage(chatId, "I didn't find a valid URL to save."); return; }
                 const { istDate } = getISTDateInfo();
-                const newItem = {
-                    id: crypto.randomUUID(),
-                    title: 'Saved via AI',
-                    link: url,
-                    isWatched: false,
-                    dateAdded: istDate.toISOString()
-                };
 
+                let extractedTitle = aiResult.watchLater.title || 'Saved via AI';
+                // Attempt to fetch title if the AI couldn't confidently capture one
+                if (extractedTitle === 'Saved via AI') {
+                    try {
+                        const response = await axios.get(url, { timeout: 3000 });
+                        const match = response.data.match(/<title>(.*?)<\/title>/i);
+                        if (match && match[1]) extractedTitle = match[1].trim();
+                    } catch (e) {
+                        // gracefully fail and leave as 'Saved via AI'
+                    }
+                }
+
+                const newItem = { id: crypto.randomUUID(), title: extractedTitle, link: url, isWatched: false, dateAdded: istDate.toISOString() };
                 await supabase.from('media_items').insert([newItem]);
-                bot.sendMessage(chatId, `✅ Saved to Watch Later!`);
+                bot.sendMessage(chatId, `✅ Saved to Watch Later: *${extractedTitle}*`, { parse_mode: 'Markdown' });
             }
             else if (intent === 'ADD_PASSWORD' && aiResult.password) {
                 const p = aiResult.password;
-                if (!p.service || (!p.username && !p.password)) {
-                    bot.sendMessage(chatId, "I need at least the service name and either the username or password.");
-                    return;
-                }
+                if (!p.service || (!p.username && !p.password)) { bot.sendMessage(chatId, "I need at least the service name and either the username or password."); return; }
 
-                const newPwd = {
-                    id: crypto.randomUUID(),
-                    service: p.service,
-                    username: p.username || 'Unknown',
-                    passwordString: p.password || 'Unknown',
-                    notes: 'Added via AI'
-                };
-
+                const newPwd = { id: crypto.randomUUID(), service: p.service, username: p.username || 'Unknown', passwordString: p.password || 'Unknown', notes: 'Added via AI' };
                 await supabase.from('passwords').insert([newPwd]);
                 bot.sendMessage(chatId, `✅ Saved credentials for *${p.service}*!`, { parse_mode: 'Markdown' });
             }
@@ -275,6 +406,65 @@ bot.on('message', async (msg) => {
                 const { todayStr } = getISTDateInfo();
                 await supabase.from('daily_habits').upsert({ date: todayStr, sleep_time: timeStr }, { onConflict: 'date' });
                 bot.sendMessage(chatId, `🌙 Sleep well! Logged sleep time as ${timeStr}.`);
+            }
+            else if (intent === 'UPDATE_HABIT_COUNT') {
+                const count = aiResult.habit?.count || 1;
+                const { todayStr } = getISTDateInfo();
+                const { data: habit } = await supabase.from('daily_habits').select('*').eq('date', todayStr).single();
+                const newIntake = (habit ? habit.water_intake : 0) + count;
+                await supabase.from('daily_habits').upsert({ date: todayStr, water_intake: newIntake });
+                bot.sendMessage(chatId, `✅ Updated habit count. Total today: ${newIntake}.`);
+            }
+            else if (intent === 'VIEW_HABIT_COUNT') {
+                const { todayStr } = getISTDateInfo();
+                const { data: habit } = await supabase.from('daily_habits').select('*').eq('date', todayStr).single();
+                bot.sendMessage(chatId, `💧 You've had ${habit?.water_intake || 0}/8 glasses of water today.`);
+            }
+            else if (intent === 'ADD_SUB' && aiResult.subscription) {
+                const s = aiResult.subscription;
+                if (!s.name || !s.amount) { bot.sendMessage(chatId, "Please specify the subscription name and amount."); return; }
+                const newSub = { id: crypto.randomUUID(), name: s.name, cost: s.amount, frequency: s.frequency || '1 MONTH', nextBillingDate: new Date().toISOString() };
+                await supabase.from('subscriptions').insert([newSub]);
+                bot.sendMessage(chatId, `✅ Added subscription: *${s.name}* (₹${s.amount})`, { parse_mode: 'Markdown' });
+            }
+            else if (intent === 'LIST_SUBS') {
+                const { data: subs } = await supabase.from('subscriptions').select('*');
+                if (!subs || subs.length === 0) { bot.sendMessage(chatId, "No active subscriptions."); return; }
+                let msg = '💳 *Subscriptions*\n\n';
+                subs.forEach(s => msg += `• *${s.name}* - ₹${s.cost} (${s.frequency})\n`);
+                bot.sendMessage(chatId, msg, { parse_mode: 'Markdown' });
+            }
+            else if (intent === 'DELETE_SUB' && aiResult.actionId) {
+                const keyword = aiResult.actionId.toLowerCase();
+                const { data: subs } = await supabase.from('subscriptions').select('*');
+                const match = subs?.find(s => s.name.toLowerCase().includes(keyword));
+                if (!match) { bot.sendMessage(chatId, `Couldn't find subscription matching '${aiResult.actionId}'.`); return; }
+                userStates[chatId] = { step: 'pending_confirmation', action: 'delete_sub', actionId: match.id };
+                bot.sendMessage(chatId, `⚠️ Delete subscription: *${match.name}*?`, { reply_markup: { inline_keyboard: [[{ text: 'Yes', callback_data: 'confirm_action_yes' }, { text: 'No', callback_data: 'confirm_action_no' }]] } });
+            }
+            else if (intent === 'ADD_FRIEND' && aiResult.split?.friendName) {
+                const newFriend = { id: crypto.randomUUID(), name: aiResult.split.friendName, totalOwed: 0 };
+                await supabase.from('friends').insert([newFriend]);
+                bot.sendMessage(chatId, `✅ Added friend: *${newFriend.name}*`, { parse_mode: 'Markdown' });
+            }
+            else if (intent === 'ADD_SPLIT' && aiResult.split) {
+                const s = aiResult.split;
+                if (!s.friendName || !s.amount) { bot.sendMessage(chatId, "Please specify the friend name and amount."); return; }
+                const { data: friends } = await supabase.from('friends').select('*');
+                const match = friends?.find(f => f.name.toLowerCase().includes(s.friendName.toLowerCase()));
+                if (!match) { bot.sendMessage(chatId, `Couldn't find friend '${s.friendName}'. Please add them first.`); return; }
+
+                const newSplit = { id: crypto.randomUUID(), friendId: match.id, description: s.description || 'Split via AI', amount: s.amount, isPaid: false };
+                await supabase.from('splits').insert([newSplit]);
+                await supabase.from('friends').update({ totalOwed: Number(match.totalOwed) + Number(s.amount) }).eq('id', match.id);
+                bot.sendMessage(chatId, `✅ Logged split: ₹${s.amount} with *${match.name}* for "${newSplit.description}".`, { parse_mode: 'Markdown' });
+            }
+            else if (intent === 'VIEW_SPLITS') {
+                const { data: friends } = await supabase.from('friends').select('*');
+                if (!friends || friends.length === 0) { bot.sendMessage(chatId, "No friends or splits found."); return; }
+                let msg = '👥 *Friends & Splits*\n\n';
+                friends.forEach(f => msg += `• *${f.name}*: owes ₹${f.totalOwed}\n`);
+                bot.sendMessage(chatId, msg, { parse_mode: 'Markdown' });
             }
             else {
                 // UNKNOWN intent or missing details
@@ -588,7 +778,13 @@ bot.onText(/\/help/, (msg) => {
 // Handle button clicks
 bot.on('callback_query', async (query) => {
     if (!query.message || !query.data) return;
-    const chatId = query.message.chat.id;
+    const chatId = query.message.chat.id.toString();
+
+    // Clear any active menu timeout if user clicked a button
+    if (activeMenuTimeouts[chatId]) {
+        clearTimeout(activeMenuTimeouts[chatId]);
+        delete activeMenuTimeouts[chatId];
+    }
 
     // Acknowledge the callback immediately so the button stops loading
     bot.answerCallbackQuery(query.id).catch(console.error);
@@ -1145,6 +1341,17 @@ ${progress}
                     console.error('Error rendering finance menu on cancel', e);
                 }
             }, 1000);
+        } else if (data === 'confirm_action_no') {
+            delete userStates[chatId];
+            bot.editMessageText('Action cancelled.', { chat_id: chatId, message_id: query.message.message_id });
+        } else if (data === 'confirm_action_yes') {
+            const state = userStates[chatId];
+            if (!state || state.step !== 'pending_confirmation') {
+                bot.editMessageText('No pending action found or already processed.', { chat_id: chatId, message_id: query.message.message_id });
+                return;
+            }
+            await executeConfirmedAction(chatId, state, bot, query.message.message_id);
+            delete userStates[chatId];
         } else if (data.startsWith('sel_acc_')) {
             const state = userStates[chatId];
             if (!state) return;
@@ -1285,8 +1492,6 @@ ${progress}
 });
 
 // Delete the previous menu if there is one active for the user
-const activeMenus: Record<string, number> = {};
-
 bot.onText(/\/menu/, async (msg) => {
     if (!isAuthorized(msg)) return;
     const chatId = msg.chat.id.toString();
@@ -1309,13 +1514,16 @@ bot.onText(/\/menu/, async (msg) => {
 
         activeMenus[chatId] = sentMsg.message_id;
 
+        activeMenus[chatId] = sentMsg.message_id;
+
         // Auto delete after 1 minute of inactivity
-        setTimeout(async () => {
+        activeMenuTimeouts[chatId] = setTimeout(async () => {
             if (activeMenus[chatId] === sentMsg.message_id) {
                 try {
                     await bot.deleteMessage(chatId, sentMsg.message_id);
                 } catch (e) { }
                 delete activeMenus[chatId];
+                delete activeMenuTimeouts[chatId];
             }
         }, 60000);
     } catch (error) {
@@ -1600,12 +1808,12 @@ const checkDailyPrompts = async () => {
         }
     }
 
-    // 10 PM Sleep Prompt
-    if (hour >= 22 && lastSleepPromptDate !== todayStr) {
+    // 11 PM Sleep Prompt
+    if (hour >= 23 && lastSleepPromptDate !== todayStr) {
         const { data: habit } = await supabase.from('daily_habits').select('*').eq('date', todayStr).single();
         if (habit && habit.wake_up_time && !habit.sleep_time) {
             lastSleepPromptDate = todayStr;
-            bot.sendMessage(ownerId, `🌙 *Evening Check-in*\n\nIt's past 10 PM. Are you going to sleep?`, {
+            bot.sendMessage(ownerId, `🌙 *Evening Check-in*\n\nIt's past 11 PM. Are you going to sleep?`, {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [

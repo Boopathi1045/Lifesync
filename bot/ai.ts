@@ -18,54 +18,89 @@ const intentSchema: Schema = {
     properties: {
         intent: {
             type: SchemaType.STRING,
-            description: "The identified user intent. Must be one of: ADD_TRANSACTION, ADD_REMINDER, ADD_WATCH_LATER, ADD_PASSWORD, ADD_WATER, SET_WAKEUP, SET_SLEEP, UNKNOWN",
+            description: "The identified user intent. Examples: ADD_INCOME, ADD_EXPENSE, ADD_TRANSFER, DELETE_TRANSACTION, LIST_TRANSACTIONS, GET_FINANCE_OVERVIEW, LIST_ACCOUNTS, ADD_ACCOUNT, DELETE_ACCOUNT, MODIFY_BALANCE, ADD_REMINDER, EDIT_REMINDER, DELETE_REMINDER, LIST_REMINDERS, ADD_WATCH_LATER, ADD_PASSWORD, ADD_WATER, SET_WAKEUP, SET_SLEEP, UPDATE_HABIT_COUNT, VIEW_HABIT_COUNT, ADD_SUB, LIST_SUBS, DELETE_SUB, ADD_FRIEND, ADD_SPLIT, VIEW_SPLITS, UNKNOWN",
             nullable: false,
+        },
+        actionId: {
+            type: SchemaType.STRING,
+            description: "If the user wants to delete or edit something specific (e.g., 'delete the rent reminder', 'edit the first transaction'), extract an identifier or keyword to help find it."
         },
         transaction: {
             type: SchemaType.OBJECT,
-            description: "Details if intent is ADD_TRANSACTION",
+            description: "Details for finance transaction intents (income, expense, transfer, delete)",
             properties: {
                 amount: { type: SchemaType.NUMBER, description: "The amount of money" },
                 purpose: { type: SchemaType.STRING, description: "What the money was for" },
-                type: { type: SchemaType.STRING, description: "Either 'EXPENSE' or 'INCOME'" },
-                accountHint: { type: SchemaType.STRING, description: "Name of the account used (e.g., cash, bank, credit card, hdfc). Optional if not mentioned." }
+                accountHint: { type: SchemaType.STRING, description: "Name of the account used (e.g., cash, bank). Optional if not mentioned." },
+                toAccountHint: { type: SchemaType.STRING, description: "For transfers, the destination account." }
+            }
+        },
+        account: {
+            type: SchemaType.OBJECT,
+            description: "Details for account intents (add, delete, modify)",
+            properties: {
+                name: { type: SchemaType.STRING, description: "Account name" },
+                balance: { type: SchemaType.NUMBER, description: "Account balance" },
+                type: { type: SchemaType.STRING, description: "Account type (e.g., bank, wallet, cash)" }
             }
         },
         reminder: {
             type: SchemaType.OBJECT,
-            description: "Details if intent is ADD_REMINDER",
+            description: "Details for reminder intents",
             properties: {
                 title: { type: SchemaType.STRING, description: "Task or reminder title" },
-                dateStr: { type: SchemaType.STRING, description: "ISO Date string or a relative date/time like 'tomorrow at 5pm'" }
+                dateStr: { type: SchemaType.STRING, description: "ISO Date string or a relative date/time like 'tomorrow at 5pm'" },
+                newTitle: { type: SchemaType.STRING, description: "For edits: The new title" },
+                newDateStr: { type: SchemaType.STRING, description: "For edits: The new date" }
             }
         },
         watchLater: {
             type: SchemaType.OBJECT,
-            description: "Details if intent is ADD_WATCH_LATER",
+            description: "Details for watch later intents",
             properties: {
-                url: { type: SchemaType.STRING, description: "The URL link to save" }
+                url: { type: SchemaType.STRING, description: "The URL link to save (if provided)" },
+                title: { type: SchemaType.STRING, description: "An optional custom title or context mentioned" }
             }
         },
         password: {
             type: SchemaType.OBJECT,
-            description: "Details if intent is ADD_PASSWORD",
+            description: "Details for passwords",
             properties: {
-                service: { type: SchemaType.STRING, description: "The platform or service name (e.g., Netflix, Gmail)" },
+                service: { type: SchemaType.STRING, description: "The platform or service name" },
                 username: { type: SchemaType.STRING, description: "The username or email" },
                 password: { type: SchemaType.STRING, description: "The password itself" }
             }
         },
         habit: {
             type: SchemaType.OBJECT,
-            description: "Details if intent is ADD_WATER, SET_WAKEUP, or SET_SLEEP",
+            description: "Details for habits routines (water, sleep, custom counts)",
             properties: {
-                glasses: { type: SchemaType.NUMBER, description: "Number of glasses of water to add" },
-                time: { type: SchemaType.STRING, description: "Time in HH:MM format (24 hour)" }
+                glasses: { type: SchemaType.NUMBER, description: "Number of glasses of water" },
+                time: { type: SchemaType.STRING, description: "Time in HH:MM format (24 hour)" },
+                count: { type: SchemaType.NUMBER, description: "General count to add/update for a habit" }
+            }
+        },
+        subscription: {
+            type: SchemaType.OBJECT,
+            description: "Details for subscriptions",
+            properties: {
+                name: { type: SchemaType.STRING, description: "Subscription name" },
+                amount: { type: SchemaType.NUMBER, description: "Subscription cost" },
+                frequency: { type: SchemaType.STRING, description: "Frequency (e.g., 1 MONTH, 1 YEAR)" }
+            }
+        },
+        split: {
+            type: SchemaType.OBJECT,
+            description: "Details for friends and splits",
+            properties: {
+                friendName: { type: SchemaType.STRING, description: "Name of the friend" },
+                amount: { type: SchemaType.NUMBER, description: "Amount owed or split" },
+                description: { type: SchemaType.STRING, description: "What the split was for" }
             }
         },
         replyText: {
             type: SchemaType.STRING,
-            description: "A conversational reply to send back to the user. For UNKNOWN intents, this should answer their question or ask for clarification. For valid commands, you can leave this blank or provide a short acknowledgment."
+            description: "A conversational reply to send back to the user based on their intent."
         }
     },
     required: ["intent"]
@@ -77,14 +112,17 @@ Your job is to parse the user's input (text or transcribed voice) and determine 
 The user's local timezone is IST (UTC+5:30). The current time is ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })}.
 
 Identify the intent and extract relevant parameters into the JSON structure.
+Use the conversation history context to resolve references like "delete the first one" or "edit that transaction".
 If the input contains a URL and nothing else, it's ADD_WATCH_LATER.
-If the input lists an amount spent/earned, it's ADD_TRANSACTION.
-If the input says "remind me to...", it's ADD_REMINDER.
-If the user is just chatting or asking a general question, use the UNKNOWN intent and provide a helpful 'replyText'.
 Always respond in the structured JSON format exactly as requested.
 `;
 
-async function callOpenRouterFallback(prompt: string, base64Audio?: string): Promise<any> {
+export type ChatTurn = {
+    role: "user" | "model";
+    parts: { text: string }[];
+};
+
+async function callOpenRouterFallback(prompt: string, history: ChatTurn[] = [], base64Audio?: string): Promise<any> {
     if (!openRouterApiKey) {
         throw new Error("OPENROUTER_API_KEY is not configured.");
     }
@@ -103,18 +141,30 @@ async function callOpenRouterFallback(prompt: string, base64Audio?: string): Pro
         content = "Please process this voice message (Note: direct audio processing may not work optimally on text models).";
     }
 
+    const messages = [
+        {
+            role: "system",
+            content: `${systemInstruction}\n\nIMPORTANT: You MUST respond ONLY with a valid JSON object matching the requested schema. No other text.`
+        }
+    ];
+
+    // Add history mapping structure to open router format
+    for (const turn of history) {
+        messages.push({
+            role: turn.role === "model" ? "assistant" : "user",
+            content: turn.parts[0]?.text || ""
+        });
+    }
+
+    // Add current user prompt
+    messages.push({
+        role: "user",
+        content: content
+    });
+
     const payload = {
         model: "mistralai/mistral-nemo",
-        messages: [
-            {
-                role: "system",
-                content: `${systemInstruction}\n\nIMPORTANT: You MUST respond ONLY with a valid JSON object matching the requested schema. No other text.`
-            },
-            {
-                role: "user",
-                content: content
-            }
-        ],
+        messages: messages,
         response_format: { type: "json_object" }
     };
 
@@ -137,7 +187,7 @@ async function callOpenRouterFallback(prompt: string, base64Audio?: string): Pro
     }
 }
 
-export async function parseIntentFromText(text: string) {
+export async function parseIntentFromText(text: string, history: ChatTurn[] = []) {
     if (genAI) {
         try {
             console.log("Attempting Gemini API for text processing...");
@@ -150,17 +200,20 @@ export async function parseIntentFromText(text: string) {
                 systemInstruction: systemInstruction,
             });
 
-            const result = await model.generateContent(text);
+            // Pass history + current message
+            const contents: any[] = [...history, { role: "user", parts: [{ text }] }];
+
+            const result = await model.generateContent({ contents });
             const responseText = result.response.text();
             return JSON.parse(responseText);
         } catch (error: any) {
             console.warn("Gemini API Error (Text):", error.message);
             console.log("Falling back to OpenRouter...");
-            return await callOpenRouterFallback(text);
+            return await callOpenRouterFallback(text, history);
         }
     } else {
         console.log("Gemini API key not found. Proceeding with OpenRouter directly.");
-        return await callOpenRouterFallback(text);
+        return await callOpenRouterFallback(text, history);
     }
 }
 
@@ -170,7 +223,7 @@ async function getAudioBase64(fileUrl: string): Promise<string> {
     return Buffer.from(response.data).toString('base64');
 }
 
-export async function parseIntentFromAudio(fileUrl: string) {
+export async function parseIntentFromAudio(fileUrl: string, history: ChatTurn[] = []) {
     const base64Audio = await getAudioBase64(fileUrl);
 
     if (genAI) {
@@ -185,25 +238,26 @@ export async function parseIntentFromAudio(fileUrl: string) {
                 systemInstruction: systemInstruction,
             });
 
-            const result = await model.generateContent([
-                {
-                    inlineData: {
-                        mimeType: "audio/ogg",
-                        data: base64Audio
-                    }
-                },
-                { text: "Please process this voice message." }
-            ]);
+            const currentContent = {
+                role: "user",
+                parts: [
+                    { inlineData: { mimeType: "audio/ogg", data: base64Audio } },
+                    { text: "Please process this voice message." }
+                ]
+            };
 
+            const contents: any[] = [...history, currentContent];
+
+            const result = await model.generateContent({ contents });
             const responseText = result.response.text();
             return JSON.parse(responseText);
         } catch (error: any) {
             console.warn("Gemini API Error (Audio):", error.message);
             console.log("Falling back to OpenRouter...");
-            return await callOpenRouterFallback("Please process this voice message.", base64Audio);
+            return await callOpenRouterFallback("Please process this voice message.", history, base64Audio);
         }
     } else {
         console.log("Gemini API key not found. Proceeding with OpenRouter directly.");
-        return await callOpenRouterFallback("Please process this voice message.", base64Audio);
+        return await callOpenRouterFallback("Please process this voice message.", history, base64Audio);
     }
 }
