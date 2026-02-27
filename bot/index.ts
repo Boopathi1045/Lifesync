@@ -263,9 +263,9 @@ bot.on('message', async (msg) => {
                     bot.sendMessage(chatId, "I'm not exactly sure what to do with that. You can tell me to add a transaction, save a reminder, etc.", getMainMenuKeyboard());
                 }
             }
-        } catch (error) {
-            console.error("AI Error:", error);
-            bot.sendMessage(chatId, "⚠️ Sorry, I encountered an issue thinking about that. Is my Gemini API key correctly set?");
+        } catch (error: any) {
+            console.error("AI Error:", error?.response?.data || error.message);
+            bot.sendMessage(chatId, "⚠️ Sorry, I encountered an issue processing your request. Please ensure the API keys are correct, or try again later.");
         }
         return;
     }

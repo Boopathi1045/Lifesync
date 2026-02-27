@@ -4,11 +4,12 @@ import axios from 'axios';
 
 dotenv.config();
 
-const apiKey = process.env.GEMINI_API_KEY;
+const geminiApiKey = process.env.GEMINI_API_KEY;
+const openRouterApiKey = process.env.OPENROUTER_API_KEY;
 
 let genAI: GoogleGenerativeAI | null = null;
-if (apiKey) {
-    genAI = new GoogleGenerativeAI(apiKey);
+if (geminiApiKey) {
+    genAI = new GoogleGenerativeAI(geminiApiKey);
 }
 
 // Define the schema for the AI's response so it always returns structured data
@@ -83,23 +84,84 @@ If the user is just chatting or asking a general question, use the UNKNOWN inten
 Always respond in the structured JSON format exactly as requested.
 `;
 
-export async function parseIntentFromText(text: string) {
-    if (!genAI) {
-        throw new Error("GEMINI_API_KEY is not configured.");
+async function callOpenRouterFallback(prompt: string, base64Audio?: string): Promise<any> {
+    if (!openRouterApiKey) {
+        throw new Error("OPENROUTER_API_KEY is not configured.");
     }
 
-    const model = genAI.getGenerativeModel({
-        model: "gemini-3-flash-preview",
-        generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: intentSchema,
-        },
-        systemInstruction: systemInstruction,
-    });
+    // For OpenRouter structured output, we provide the schema within the system prompt or via response_format depending on model support.
+    // Mistral supports structured output, we will just give strict instructions.
 
-    const result = await model.generateContent(text);
-    const responseText = result.response.text();
-    return JSON.parse(responseText);
+    let content: any = prompt;
+
+    // Note: Audio support in openrouter depends on the model. 
+    // If mistral-nemo doesn't support audio directly via vision/multimodal messages, 
+    // it might fail here. We will pass text instructions for now.
+    if (base64Audio) {
+        // Just logging that audio was passed, but many open router models are text-only.
+        console.log("Audio fallback to OpenRouter - OpenRouter might not natively transcribe audio unless using specific multimodal models like gemini via openrouter.");
+        content = "Please process this voice message (Note: direct audio processing may not work optimally on text models).";
+    }
+
+    const payload = {
+        model: "mistralai/mistral-nemo",
+        messages: [
+            {
+                role: "system",
+                content: `${systemInstruction}\n\nIMPORTANT: You MUST respond ONLY with a valid JSON object matching the requested schema. No other text.`
+            },
+            {
+                role: "user",
+                content: content
+            }
+        ],
+        response_format: { type: "json_object" }
+    };
+
+    try {
+        console.log("Calling OpenRouter fallback...");
+        const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', payload, {
+            headers: {
+                'Authorization': `Bearer ${openRouterApiKey}`,
+                'HTTP-Referer': 'https://lifesync.app', // Required by OpenRouter
+                'X-Title': 'LifeSync Bot', // Required by OpenRouter
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const responseText = response.data.choices[0].message.content;
+        return JSON.parse(responseText);
+    } catch (error: any) {
+        console.error("OpenRouter API Error:", error?.response?.data || error.message);
+        throw error;
+    }
+}
+
+export async function parseIntentFromText(text: string) {
+    if (genAI) {
+        try {
+            console.log("Attempting Gemini API for text processing...");
+            const model = genAI.getGenerativeModel({
+                model: "gemini-3-flash-preview",
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: intentSchema,
+                },
+                systemInstruction: systemInstruction,
+            });
+
+            const result = await model.generateContent(text);
+            const responseText = result.response.text();
+            return JSON.parse(responseText);
+        } catch (error: any) {
+            console.warn("Gemini API Error (Text):", error.message);
+            console.log("Falling back to OpenRouter...");
+            return await callOpenRouterFallback(text);
+        }
+    } else {
+        console.log("Gemini API key not found. Proceeding with OpenRouter directly.");
+        return await callOpenRouterFallback(text);
+    }
 }
 
 // Function to convert telegram OGG voice to base64
@@ -109,31 +171,39 @@ async function getAudioBase64(fileUrl: string): Promise<string> {
 }
 
 export async function parseIntentFromAudio(fileUrl: string) {
-    if (!genAI) {
-        throw new Error("GEMINI_API_KEY is not configured.");
-    }
-
     const base64Audio = await getAudioBase64(fileUrl);
 
-    const model = genAI.getGenerativeModel({
-        model: "gemini-3-flash-preview",
-        generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: intentSchema,
-        },
-        systemInstruction: systemInstruction,
-    });
+    if (genAI) {
+        try {
+            console.log("Attempting Gemini API for audio processing...");
+            const model = genAI.getGenerativeModel({
+                model: "gemini-3-flash-preview",
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: intentSchema,
+                },
+                systemInstruction: systemInstruction,
+            });
 
-    const result = await model.generateContent([
-        {
-            inlineData: {
-                mimeType: "audio/ogg",
-                data: base64Audio
-            }
-        },
-        { text: "Please process this voice message." }
-    ]);
+            const result = await model.generateContent([
+                {
+                    inlineData: {
+                        mimeType: "audio/ogg",
+                        data: base64Audio
+                    }
+                },
+                { text: "Please process this voice message." }
+            ]);
 
-    const responseText = result.response.text();
-    return JSON.parse(responseText);
+            const responseText = result.response.text();
+            return JSON.parse(responseText);
+        } catch (error: any) {
+            console.warn("Gemini API Error (Audio):", error.message);
+            console.log("Falling back to OpenRouter...");
+            return await callOpenRouterFallback("Please process this voice message.", base64Audio);
+        }
+    } else {
+        console.log("Gemini API key not found. Proceeding with OpenRouter directly.");
+        return await callOpenRouterFallback("Please process this voice message.", base64Audio);
+    }
 }
