@@ -10,6 +10,7 @@ import PasswordManager from './components/PasswordManager';
 import WatchLater from './components/WatchLater';
 import FinanceManager from './components/FinanceManager';
 import Settings from './components/Settings';
+import FloatingAIChat from './components/FloatingAIChat';
 
 const THEMES = {
   BLUE: { primary: '#3b82f6', foreground: '#ffffff' },
@@ -320,6 +321,10 @@ const App: React.FC = () => {
             </div>
           )}
         </main>
+
+        {/* Global Floating AI Chat Widget */}
+        <FloatingAIChat />
+
       </div>
     </>
   );

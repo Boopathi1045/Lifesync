@@ -1033,7 +1033,7 @@ bot.on('callback_query', async (query) => {
             const formatDuration = (m: number) => m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
             const napDisplay = totalNapMins > 0 ? formatDuration(totalNapMins) : '0m';
 
-            const currentState = userStates[chatId] || { step: '' };
+            const currentState = userStates[chatId] || { step: '' } as UserState;
             const isNapOngoing = !!currentState.napStartTime;
 
             const habitMsg = `

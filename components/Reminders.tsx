@@ -149,12 +149,21 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, setReminders, snoozePr
     <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-6 relative pb-32">
       <header className="flex items-center justify-between text-white">
         <h2 className="text-3xl font-black pb-1">Reminders</h2>
-        <button
-          onClick={() => { setShowArchived(!showArchived); setExpandedId(null); }}
-          className={`px-5 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${showArchived ? 'bg-white text-slate-900 shadow-sm' : 'bg-white/10 text-white hover:bg-white/20'}`}
-        >
-          {showArchived ? 'Active' : 'Archived'}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => { setShowArchived(!showArchived); setExpandedId(null); }}
+            className={`px-4 py-2 sm:px-5 sm:py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${showArchived ? 'bg-white text-slate-900 shadow-sm' : 'bg-white/10 text-white hover:bg-white/20'}`}
+          >
+            {showArchived ? 'Active' : 'Archived'}
+          </button>
+          <button
+            onClick={() => { setForm({ title: '', description: '', date: new Date().toISOString().split('T')[0], time: '09:00', category: ReminderCategory.GENERAL }); setShowModal('ADD'); }}
+            className="px-4 py-2 sm:px-5 sm:py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm transition-all flex items-center gap-1"
+          >
+            <span className="material-symbols-rounded text-[14px]">add</span>
+            New
+          </button>
+        </div>
       </header>
 
       {/* Tabs */}
@@ -214,14 +223,6 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, setReminders, snoozePr
           );
         })}
       </div>
-
-      {/* FAB */}
-      <button
-        onClick={() => { setForm({ title: '', description: '', date: new Date().toISOString().split('T')[0], time: '09:00', category: ReminderCategory.GENERAL }); setShowModal('ADD'); }}
-        className="fixed bottom-8 right-8 size-16 bg-slate-900 text-white rounded-[2rem] flex items-center justify-center font-black shadow-xl z-50 hover:-translate-y-1 transition-transform"
-      >
-        <span className="text-3xl leading-none">+</span>
-      </button>
 
       {/* COMPACT & SCROLLABLE MODAL */}
       {showModal && (
