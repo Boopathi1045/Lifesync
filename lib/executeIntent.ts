@@ -164,7 +164,13 @@ export async function executeIntent(aiResult: any, inputText: string): Promise<E
 
             let finalDate = new Date();
             if (r.dateStr) {
-                const parsed = new Date(r.dateStr);
+                // The AI often returns dates without timezone specifiers (e.g. 2026-03-01T15:00:00)
+                // If it lacks a timezone (Z or +05:30), append IST offset so the server parses it exactly as intended.
+                let safeDateStr = r.dateStr;
+                if (!safeDateStr.includes('Z') && !safeDateStr.includes('+') && safeDateStr.includes('T')) {
+                    safeDateStr += '+05:30';
+                }
+                const parsed = new Date(safeDateStr);
                 if (!isNaN(parsed.getTime())) finalDate = parsed;
             } else {
                 finalDate.setHours(23, 59, 59, 999);
@@ -204,7 +210,11 @@ export async function executeIntent(aiResult: any, inputText: string): Promise<E
             const updates: any = {};
             if (aiResult.reminder.newTitle) updates.title = aiResult.reminder.newTitle;
             if (aiResult.reminder.newDateStr) {
-                const parsed = new Date(aiResult.reminder.newDateStr);
+                let safeDateStr = aiResult.reminder.newDateStr;
+                if (!safeDateStr.includes('Z') && !safeDateStr.includes('+') && safeDateStr.includes('T')) {
+                    safeDateStr += '+05:30';
+                }
+                const parsed = new Date(safeDateStr);
                 if (!isNaN(parsed.getTime())) updates.dueDate = parsed.toISOString();
             }
 

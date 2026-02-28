@@ -309,7 +309,11 @@ bot.on('message', async (msg) => {
 
                 let finalDate = new Date();
                 if (r.dateStr) {
-                    const parsed = new Date(r.dateStr);
+                    let safeDateStr = r.dateStr;
+                    if (!safeDateStr.includes('Z') && !safeDateStr.includes('+') && safeDateStr.includes('T')) {
+                        safeDateStr += '+05:30';
+                    }
+                    const parsed = new Date(safeDateStr);
                     if (!isNaN(parsed.getTime())) finalDate = parsed;
                 } else {
                     finalDate.setHours(23, 59, 59, 999);
@@ -347,7 +351,11 @@ bot.on('message', async (msg) => {
                 const updates: any = {};
                 if (aiResult.reminder.newTitle) updates.title = aiResult.reminder.newTitle;
                 if (aiResult.reminder.newDateStr) {
-                    const parsed = new Date(aiResult.reminder.newDateStr);
+                    let safeDateStr = aiResult.reminder.newDateStr;
+                    if (!safeDateStr.includes('Z') && !safeDateStr.includes('+') && safeDateStr.includes('T')) {
+                        safeDateStr += '+05:30';
+                    }
+                    const parsed = new Date(safeDateStr);
                     if (!isNaN(parsed.getTime())) updates.dueDate = parsed.toISOString();
                 }
 
