@@ -548,7 +548,7 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
                       </div>
 
                       {/* Total Sleep Stat Block */}
-                      <div className="bg-slate-50 p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden sm:col-span-2">
+                      <div className="bg-slate-50 p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden">
                         <div className="flex justify-between items-center mb-4 z-10">
                           <div>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Avg Sleep <span className="text-[8px] opacity-70">(Night + Nap)</span></p>
@@ -571,20 +571,22 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
                       </div>
 
                       {/* Other single line stats */}
-                      <div className="bg-slate-50 p-5 rounded-3xl flex items-center justify-between relative overflow-hidden sm:col-span-2 lg:col-span-3 mt-2">
-                        <div>
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Water Intake</p>
-                          <p className="font-bold text-lg text-slate-800">{avgWater} {parseFloat(avgWater) === 1 ? 'Glass' : 'Glasses'}</p>
+                      <div className="col-span-1 sm:col-span-2 lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-6 mt-2">
+                        <div className="bg-slate-50 p-5 rounded-3xl flex items-center justify-between relative overflow-hidden">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Water Intake</p>
+                            <p className="font-bold text-lg text-slate-800">{avgWater} {parseFloat(avgWater) === 1 ? 'Glass' : 'Glasses'}</p>
+                          </div>
+                          <div className="absolute right-0 top-0 h-10 w-32 bg-gradient-to-r from-cyan-200 to-blue-200 rounded-full blur-xl opacity-50 pointer-events-none -mr-10 -mt-2"></div>
                         </div>
-                        <div className="absolute right-0 top-0 h-10 w-32 bg-gradient-to-r from-cyan-200 to-blue-200 rounded-full blur-xl opacity-50 pointer-events-none -mr-10 -mt-2"></div>
-                      </div>
 
-                      <div className="bg-slate-50 p-5 rounded-3xl flex items-center justify-between relative overflow-hidden sm:col-span-2 lg:col-span-3">
-                        <div>
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Today's Naps</p>
-                          <p className="font-bold text-lg text-slate-800">{napDisplay} <span className="text-xs text-slate-500 font-normal">({(naps || []).length} logs)</span></p>
+                        <div className="bg-slate-50 p-5 rounded-3xl flex items-center justify-between relative overflow-hidden">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Today's Naps</p>
+                            <p className="font-bold text-lg text-slate-800">{napDisplay} <span className="text-xs text-slate-500 font-normal">({(naps || []).length} logs)</span></p>
+                          </div>
+                          <div className="absolute right-0 top-0 h-10 w-32 bg-gradient-to-r from-purple-200 to-pink-200 rounded-full blur-xl opacity-50 pointer-events-none -mr-10 -mt-2"></div>
                         </div>
-                        <div className="absolute right-0 top-0 h-10 w-32 bg-gradient-to-r from-purple-200 to-pink-200 rounded-full blur-xl opacity-50 pointer-events-none -mr-10 -mt-2"></div>
                       </div>
                     </>
                   )}

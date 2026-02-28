@@ -36,7 +36,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView }) => {
             key={item.id}
             onClick={() => setCurrentView(item.id)}
             title={item.label}
-            className={`flex-shrink-0 flex flex-col md:flex-row items-center justify-center gap-1 md:gap-4 px-3 md:px-6 py-2 md:py-3 rounded-2xl md:rounded-full transition-all ${currentView === item.id
+            className={`flex-shrink-0 flex flex-col md:flex-row items-center justify-center md:justify-start gap-1 md:gap-4 px-3 md:px-6 py-2 md:py-3 rounded-2xl md:rounded-full transition-all ${currentView === item.id
               ? 'bg-white/20 text-white font-bold md:w-full'
               : 'text-white/70 hover:bg-white/10 hover:text-white md:w-full'
               }`}
