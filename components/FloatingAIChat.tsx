@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { parseIntentFromText, ChatTurn } from '../lib/aiClient';
-import { executeIntent } from '../lib/executeIntent';
+import { executeIntent, ExecuteResult } from '../lib/executeIntent';
+import { supabase } from '../lib/supabase';
 
 const FloatingAIChat: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
-    const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
+    const [messages, setMessages] = useState<{ role: 'user' | 'model'; text: string; isConfirmation?: boolean }[]>([]);
     const [input, setInput] = useState('');
     const [isTyping, setIsTyping] = useState(false);
+    const [pendingAction, setPendingAction] = useState<ExecuteResult['pendingAction'] | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Auto-scroll to bottom of chat
@@ -24,21 +26,35 @@ const FloatingAIChat: React.FC = () => {
         }
     }, [messages, isOpen]);
 
+    useEffect(() => {
+        // scroll to bottom whenever messages or typing state changes
+        scrollToBottom();
+    }, [messages, isTyping, pendingAction]);
+
     const handleSend = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
         if (!input.trim()) return;
 
         const userText = input.trim();
         setInput('');
+
+        // If there was a pending action and the user typed something instead of clicking Yes/No, cancel it
+        if (pendingAction) {
+            setPendingAction(null);
+            setMessages(prev => [...prev, { role: 'model', text: 'Previous action cancelled.' }]);
+        }
+
         setMessages(prev => [...prev, { role: 'user', text: userText }]);
         setIsTyping(true);
 
         try {
             // Format history for the AI client (keep last 4 turns context aware)
-            const chatHistory: ChatTurn[] = messages.slice(-4).map(m => ({
-                role: m.role,
-                parts: [{ text: m.text }]
-            }));
+            const chatHistory: ChatTurn[] = messages
+                .filter(m => !m.isConfirmation) // Exclude system confirmation UI notes from AI view
+                .slice(-4).map(m => ({
+                    role: m.role,
+                    parts: [{ text: m.text }]
+                }));
 
             // 1. Ask Gemini to extract intent
             const aiResult = await parseIntentFromText(userText, chatHistory);
@@ -47,10 +63,68 @@ const FloatingAIChat: React.FC = () => {
             const execResult = await executeIntent(aiResult, userText);
 
             // 3. Update UI
-            setMessages(prev => [...prev, { role: 'model', text: execResult.message }]);
+            if (execResult.requiresConfirmation && execResult.pendingAction) {
+                setPendingAction(execResult.pendingAction);
+                setMessages(prev => [...prev, { role: 'model', text: execResult.message, isConfirmation: true }]);
+            } else {
+                setMessages(prev => [...prev, { role: 'model', text: execResult.message }]);
+            }
         } catch (error) {
             console.error("Chat Error:", error);
             setMessages(prev => [...prev, { role: 'model', text: "Sorry, I ran into an issue connecting to the servers." }]);
+        } finally {
+            setIsTyping(false);
+        }
+    };
+
+    const handleConfirmAction = async (confirmed: boolean) => {
+        if (!pendingAction) return;
+
+        const actionToProcess = { ...pendingAction };
+        setPendingAction(null); // Clear it immediately
+
+        if (!confirmed) {
+            setMessages(prev => [...prev, { role: 'user', text: 'No' }, { role: 'model', text: '❌ Action cancelled.' }]);
+            return;
+        }
+
+        setMessages(prev => [...prev, { role: 'user', text: 'Yes' }]);
+        setIsTyping(true);
+
+        try {
+            if (actionToProcess.action === 'delete_reminder') {
+                await supabase.from('reminders').delete().eq('id', actionToProcess.actionId);
+                setMessages(prev => [...prev, { role: 'model', text: '✅ Reminder deleted successfully.' }]);
+            }
+            else if (actionToProcess.action === 'delete_transaction') {
+                await supabase.from('transactions').delete().eq('id', actionToProcess.actionId);
+                setMessages(prev => [...prev, { role: 'model', text: '✅ Transaction deleted successfully.' }]);
+            }
+            else if (actionToProcess.action === 'delete_account') {
+                await supabase.from('accounts').delete().eq('id', actionToProcess.actionId);
+                setMessages(prev => [...prev, { role: 'model', text: '✅ Account deleted successfully.' }]);
+            }
+            else if (actionToProcess.action === 'delete_sub') {
+                await supabase.from('subscriptions').delete().eq('id', actionToProcess.actionId);
+                setMessages(prev => [...prev, { role: 'model', text: '✅ Subscription deleted successfully.' }]);
+            }
+            else if (actionToProcess.action === 'modify_balance') {
+                await supabase.from('accounts').update({ balance: actionToProcess.payload?.balance }).eq('id', actionToProcess.actionId);
+                setMessages(prev => [...prev, { role: 'model', text: `✅ Account balance updated to ₹${actionToProcess.payload?.balance}.` }]);
+            }
+            else if (actionToProcess.action === 'edit_reminder' && actionToProcess.payload) {
+                await supabase.from('reminders').update(actionToProcess.payload).eq('id', actionToProcess.actionId);
+                setMessages(prev => [...prev, { role: 'model', text: `✅ Reminder updated successfully.` }]);
+            }
+            else {
+                setMessages(prev => [...prev, { role: 'model', text: '❌ Unknown action type.' }]);
+            }
+
+            // Force a slight delay to allow UI to catch up nicely with the API response
+            await new Promise(r => setTimeout(r, 500));
+        } catch (error) {
+            console.error("Execution error", error);
+            setMessages(prev => [...prev, { role: 'model', text: '❌ Failed to execute action on the database.' }]);
         } finally {
             setIsTyping(false);
         }
@@ -78,10 +152,28 @@ const FloatingAIChat: React.FC = () => {
 
                     <div className="h-[350px] p-4 overflow-y-auto custom-scrollbar flex flex-col gap-4 bg-gradient-to-b from-[#0f172a] to-slate-900 border-x border-white/5">
                         {messages.map((msg, idx) => (
-                            <div key={idx} className={`flex max-w-[85%] ${msg.role === 'user' ? 'self-end' : 'self-start'}`}>
-                                <div className={`p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-primary text-white rounded-br-sm' : 'bg-slate-800 text-slate-200 border border-white/5 rounded-bl-sm'}`}>
+                            <div key={idx} className={`flex flex-col gap-2 max-w-[85%] ${msg.role === 'user' ? 'self-end' : 'self-start'}`}>
+                                <div className={`p-3 rounded-2xl text-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-primary text-white rounded-br-sm' : 'bg-slate-800 text-slate-200 border border-white/5 rounded-bl-sm'}`}>
                                     {msg.text}
                                 </div>
+
+                                {/* Show confirmation buttons only on the very last message if pendingAction exists */}
+                                {msg.isConfirmation && idx === messages.length - 1 && pendingAction && (
+                                    <div className="flex gap-2 mt-1">
+                                        <button
+                                            onClick={() => handleConfirmAction(true)}
+                                            className="px-4 py-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full text-xs font-bold hover:bg-emerald-500/30 transition-colors focus:ring-2 focus:ring-emerald-500/50"
+                                        >
+                                            Yes
+                                        </button>
+                                        <button
+                                            onClick={() => handleConfirmAction(false)}
+                                            className="px-4 py-1.5 bg-rose-500/20 text-rose-400 border border-rose-500/30 rounded-full text-xs font-bold hover:bg-rose-500/30 transition-colors focus:ring-2 focus:ring-rose-500/50"
+                                        >
+                                            No
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         ))}
                         {isTyping && (

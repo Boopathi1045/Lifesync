@@ -104,6 +104,7 @@ Your job is to parse the user's text input and determine their intent to control
 The user's local timezone is IST (UTC+5:30). The current time is ${new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })}.
 
 Identify the intent and extract relevant parameters into the JSON structure.
+If the input is just conversational (like "Hi" or "How are you?"), set the intent to "UNKNOWN" and provide a friendly conversational response in the "replyText" field.
 Use the conversation history context to resolve references like "delete the first one" or "edit that transaction".
 If the input contains a URL and nothing else, it's ADD_WATCH_LATER.
 Always respond in the structured JSON format exactly as requested.

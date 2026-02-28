@@ -34,7 +34,18 @@ async function resolveAccount(hint: string | undefined): Promise<string | null> 
     return accounts[0].id; // Fallback
 }
 
-export async function executeIntent(aiResult: any, inputText: string): Promise<{ success: boolean; message: string }> {
+export interface ExecuteResult {
+    success: boolean;
+    message: string;
+    requiresConfirmation?: boolean;
+    pendingAction?: {
+        action: string;
+        actionId: string;
+        payload?: any;
+    };
+}
+
+export async function executeIntent(aiResult: any, inputText: string): Promise<ExecuteResult> {
     const intent = aiResult.intent;
 
     try {
@@ -43,7 +54,7 @@ export async function executeIntent(aiResult: any, inputText: string): Promise<{
             if (!tx.amount || !tx.purpose) return { success: false, message: "Please specify the exact amount and purpose for the transaction." };
 
             const accountId = await resolveAccount(tx.accountHint);
-            if (!accountId) return { success: false, message: "You need to create at least one account first." };
+            if (!accountId) return { success: false, message: "You need to create at least one account in the web app first." };
 
             const { todayStr } = getISTDateInfo();
             const txType = intent === 'ADD_INCOME' ? 'INCOME' : (intent === 'ADD_EXPENSE' ? 'EXPENSE' : (tx.type === 'INCOME' ? 'INCOME' : 'EXPENSE'));
@@ -58,7 +69,7 @@ export async function executeIntent(aiResult: any, inputText: string): Promise<{
                 await supabase.from('accounts').update(flowUpdate).eq('id', accountId);
             }
 
-            return { success: true, message: `Successfully logged ${txType.toLowerCase()} of ₹${tx.amount} for "${tx.purpose}".` };
+            return { success: true, message: `✅ Logged ${txType} of ₹${tx.amount} for "${tx.purpose}".` };
         }
         else if (intent === 'ADD_TRANSFER' && aiResult.transaction) {
             const tx = aiResult.transaction;
@@ -79,7 +90,7 @@ export async function executeIntent(aiResult: any, inputText: string): Promise<{
             const { data: toAcc } = await supabase.from('accounts').select('balance, totalInflow').eq('id', toAccountId).single();
             if (toAcc) await supabase.from('accounts').update({ balance: Number(toAcc.balance) + Number(tx.amount), totalInflow: Number(toAcc.totalInflow) + Number(tx.amount) }).eq('id', toAccountId);
 
-            return { success: true, message: `Successfully transferred ₹${tx.amount}.` };
+            return { success: true, message: `✅ Transferred ₹${tx.amount}.` };
         }
         else if (intent === 'DELETE_TRANSACTION' && aiResult.actionId) {
             const keyword = aiResult.actionId.toLowerCase();
@@ -87,8 +98,65 @@ export async function executeIntent(aiResult: any, inputText: string): Promise<{
             const match = txs?.find(t => t.purpose.toLowerCase().includes(keyword));
             if (!match) return { success: false, message: `Couldn't find a matching transaction recently for '${aiResult.actionId}'.` };
 
-            await supabase.from('transactions').delete().eq('id', match.id);
-            return { success: true, message: `Deleted transaction: ${match.purpose} (₹${match.amount}).` };
+            return {
+                success: true,
+                message: `⚠️ Delete transaction: *${match.purpose}* (₹${match.amount})?`,
+                requiresConfirmation: true,
+                pendingAction: { action: 'delete_transaction', actionId: match.id }
+            };
+        }
+        else if (intent === 'LIST_TRANSACTIONS') {
+            const { data: txs } = await supabase.from('transactions').select('*').order('date', { ascending: false }).limit(5);
+            if (!txs || txs.length === 0) return { success: true, message: "No recent transactions found." };
+            let msg = '📋 *Recent Transactions*\n\n';
+            txs.forEach(t => { msg += `${t.type === 'EXPENSE' ? '📉' : (t.type === 'INCOME' ? '📈' : '🔄')} *${t.purpose}*\nAmount: ₹${t.amount} | Date: ${new Date(t.date).toLocaleDateString()}\n\n`; });
+            return { success: true, message: msg };
+        }
+        else if (intent === 'GET_FINANCE_OVERVIEW') {
+            const { data: accs } = await supabase.from('accounts').select('*');
+            let totalBal = 0; accs?.forEach(a => totalBal += Number(a.balance));
+            return { success: true, message: `💰 *Finance Overview*\n\nTotal Balance: ₹${totalBal.toFixed(2)}\nTotal Accounts: ${accs?.length || 0}` };
+        }
+        else if (intent === 'LIST_ACCOUNTS') {
+            const { data: accs } = await supabase.from('accounts').select('*').order('name');
+            if (!accs || accs.length === 0) return { success: true, message: "No accounts found." };
+            let msg = '🏦 *Your Accounts*\n\n';
+            accs.forEach(a => { msg += `• *${a.name}* (${a.type}): ₹${a.balance}\n`; });
+            return { success: true, message: msg };
+        }
+        else if (intent === 'ADD_ACCOUNT' && aiResult.account) {
+            const a = aiResult.account;
+            if (!a.name || a.balance === undefined) return { success: false, message: "Please provide the account name and initial balance." };
+            const newAcc = { id: crypto.randomUUID(), name: a.name, type: a.type || 'Bank Account', balance: a.balance, totalInflow: 0, totalOutflow: 0 };
+            await supabase.from('accounts').insert([newAcc]);
+            return { success: true, message: `✅ Account *${a.name}* created with ₹${a.balance}.` };
+        }
+        else if (intent === 'DELETE_ACCOUNT' && aiResult.actionId) {
+            const keyword = aiResult.actionId.toLowerCase();
+            const { data: accs } = await supabase.from('accounts').select('*');
+            const match = accs?.find(a => a.name.toLowerCase().includes(keyword));
+            if (!match) return { success: false, message: `Couldn't find an account matching '${aiResult.actionId}'.` };
+
+            return {
+                success: true,
+                message: `⚠️ Delete account: *${match.name}*? All its transactions might be affected.`,
+                requiresConfirmation: true,
+                pendingAction: { action: 'delete_account', actionId: match.id }
+            };
+        }
+        else if (intent === 'MODIFY_BALANCE' && aiResult.account && aiResult.actionId) {
+            const keyword = aiResult.actionId.toLowerCase();
+            const { data: accs } = await supabase.from('accounts').select('*');
+            const match = accs?.find(a => a.name.toLowerCase().includes(keyword));
+            if (!match) return { success: false, message: `Couldn't find an account matching '${aiResult.actionId}'.` };
+            const newBal = aiResult.account.balance !== undefined ? aiResult.account.balance : 0;
+
+            return {
+                success: true,
+                message: `⚠️ Update balance of *${match.name}* from ₹${match.balance} to ₹${newBal}?`,
+                requiresConfirmation: true,
+                pendingAction: { action: 'modify_balance', actionId: match.id, payload: { balance: newBal } }
+            };
         }
         else if (intent === 'ADD_REMINDER' && aiResult.reminder) {
             const r = aiResult.reminder;
@@ -105,7 +173,14 @@ export async function executeIntent(aiResult: any, inputText: string): Promise<{
             const newReminder = { id: crypto.randomUUID(), title: r.title, description: 'Added via AI Assistant', dueDate: finalDate.toISOString(), category: 'GENERAL', isDone: false };
             await supabase.from('reminders').insert([newReminder]);
 
-            return { success: true, message: `Set reminder: ${r.title} for ${finalDate.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })}` };
+            return { success: true, message: `✅ Set reminder: *${r.title}* for ${finalDate.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })}` };
+        }
+        else if (intent === 'LIST_REMINDERS') {
+            const { data: rems } = await supabase.from('reminders').select('*').eq('isDone', false).order('dueDate', { ascending: true }).limit(5);
+            if (!rems || rems.length === 0) return { success: true, message: "You have no pending reminders." };
+            let msg = '🔔 *Upcoming Reminders*\n\n';
+            rems.forEach(r => { msg += `• *${r.title}* - ${new Date(r.dueDate).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })}\n`; });
+            return { success: true, message: msg };
         }
         else if (intent === 'DELETE_REMINDER' && aiResult.actionId) {
             const keyword = aiResult.actionId.toLowerCase();
@@ -113,8 +188,36 @@ export async function executeIntent(aiResult: any, inputText: string): Promise<{
             const match = rems?.find(r => r.title.toLowerCase().includes(keyword));
             if (!match) return { success: false, message: `Couldn't find a pending reminder matching '${aiResult.actionId}'.` };
 
-            await supabase.from('reminders').delete().eq('id', match.id);
-            return { success: true, message: `Deleted reminder: ${match.title}.` };
+            return {
+                success: true,
+                message: `⚠️ Delete reminder: *${match.title}*?`,
+                requiresConfirmation: true,
+                pendingAction: { action: 'delete_reminder', actionId: match.id }
+            };
+        }
+        else if (intent === 'EDIT_REMINDER' && aiResult.reminder && aiResult.actionId) {
+            const keyword = aiResult.actionId.toLowerCase();
+            const { data: rems } = await supabase.from('reminders').select('*').eq('isDone', false).order('dueDate', { ascending: true }).limit(20);
+            const match = rems?.find(r => r.title.toLowerCase().includes(keyword));
+            if (!match) return { success: false, message: `Couldn't find a pending reminder matching '${aiResult.actionId}'.` };
+
+            const updates: any = {};
+            if (aiResult.reminder.newTitle) updates.title = aiResult.reminder.newTitle;
+            if (aiResult.reminder.newDateStr) {
+                const parsed = new Date(aiResult.reminder.newDateStr);
+                if (!isNaN(parsed.getTime())) updates.dueDate = parsed.toISOString();
+            }
+
+            if (Object.keys(updates).length > 0) {
+                return {
+                    success: true,
+                    message: `⚠️ Update reminder: *${match.title}*?`,
+                    requiresConfirmation: true,
+                    pendingAction: { action: 'edit_reminder', actionId: match.id, payload: updates }
+                };
+            } else {
+                return { success: false, message: `I found the reminder but didn't catch what you wanted to change.` };
+            }
         }
         else if (intent === 'ADD_WATCH_LATER' && aiResult.watchLater) {
             const url = aiResult.watchLater.url || inputText;
@@ -136,7 +239,7 @@ export async function executeIntent(aiResult: any, inputText: string): Promise<{
             const newItem = { id: crypto.randomUUID(), title: extractedTitle, link: url, isWatched: false, dateAdded: istDate.toISOString() };
             await supabase.from('media_items').insert([newItem]);
 
-            return { success: true, message: `Saved to Watch Later: ${extractedTitle}` };
+            return { success: true, message: `✅ Saved to Watch Later: *${extractedTitle}*` };
         }
         else if (intent === 'ADD_PASSWORD' && aiResult.password) {
             const p = aiResult.password;
@@ -145,7 +248,7 @@ export async function executeIntent(aiResult: any, inputText: string): Promise<{
             const newPwd = { id: crypto.randomUUID(), service: p.service, username: p.username || 'Unknown', passwordString: p.password || 'Unknown', notes: 'Added via AI' };
             await supabase.from('passwords').insert([newPwd]);
 
-            return { success: true, message: `Saved credentials for ${p.service}!` };
+            return { success: true, message: `✅ Saved credentials for *${p.service}*!` };
         }
         else if (intent === 'ADD_WATER' && aiResult.habit) {
             const glasses = aiResult.habit.glasses || 1;
@@ -168,6 +271,28 @@ export async function executeIntent(aiResult: any, inputText: string): Promise<{
             await supabase.from('daily_habits').upsert({ date: todayStr, sleep_time: timeStr }, { onConflict: 'date' });
             return { success: true, message: `🌙 Sleep well! Logged sleep time as ${timeStr}.` };
         }
+        else if (intent === 'START_NAP') {
+            return { success: true, message: `Nap started... sleep well! 💤\n(Note: In the Web AI, we will ask you to go to the Habit Tracker menu to stop the nap to ensure exact timing!)` };
+        }
+        else if (intent === 'END_NAP') {
+            return { success: true, message: `✅ I see you've ended a nap. Please ensure you update the Habit Tracker to reflect exact times.` };
+        }
+        else if (intent === 'ADD_NAP') {
+            return { success: true, message: `Please use the explicit Habit Tracker menu to start and end your naps, so the exact times are logged accurately.` };
+        }
+        else if (intent === 'UPDATE_HABIT_COUNT') {
+            const count = aiResult.habit?.count || 1;
+            const { todayStr } = getISTDateInfo();
+            const { data: habit } = await supabase.from('daily_habits').select('*').eq('date', todayStr).single();
+            const newIntake = (habit ? habit.water_intake : 0) + count;
+            await supabase.from('daily_habits').upsert({ date: todayStr, water_intake: newIntake });
+            return { success: true, message: `✅ Updated habit count. Total today: ${newIntake}.` };
+        }
+        else if (intent === 'VIEW_HABIT_COUNT') {
+            const { todayStr } = getISTDateInfo();
+            const { data: habit } = await supabase.from('daily_habits').select('*').eq('date', todayStr).single();
+            return { success: true, message: `💧 You've had ${habit?.water_intake || 0}/8 glasses of water today.` };
+        }
         else if (intent === 'ADD_SUB' && aiResult.subscription) {
             const s = aiResult.subscription;
             if (!s.name || !s.amount) return { success: false, message: "Please specify the subscription name and amount." };
@@ -175,12 +300,32 @@ export async function executeIntent(aiResult: any, inputText: string): Promise<{
             const newSub = { id: crypto.randomUUID(), name: s.name, cost: s.amount, frequency: s.frequency || '1 MONTH', nextBillingDate: new Date().toISOString() };
             await supabase.from('subscriptions').insert([newSub]);
 
-            return { success: true, message: `Added subscription: ${s.name} (₹${s.amount})` };
+            return { success: true, message: `✅ Added subscription: *${s.name}* (₹${s.amount})` };
+        }
+        else if (intent === 'LIST_SUBS') {
+            const { data: subs } = await supabase.from('subscriptions').select('*');
+            if (!subs || subs.length === 0) return { success: true, message: "No active subscriptions." };
+            let msg = '💳 *Subscriptions*\n\n';
+            subs.forEach(s => msg += `• *${s.name}* - ₹${s.cost} (${s.frequency})\n`);
+            return { success: true, message: msg };
+        }
+        else if (intent === 'DELETE_SUB' && aiResult.actionId) {
+            const keyword = aiResult.actionId.toLowerCase();
+            const { data: subs } = await supabase.from('subscriptions').select('*');
+            const match = subs?.find(s => s.name.toLowerCase().includes(keyword));
+            if (!match) return { success: false, message: `Couldn't find subscription matching '${aiResult.actionId}'.` };
+
+            return {
+                success: true,
+                message: `⚠️ Delete subscription: *${match.name}*?`,
+                requiresConfirmation: true,
+                pendingAction: { action: 'delete_sub', actionId: match.id }
+            };
         }
         else if (intent === 'ADD_FRIEND' && aiResult.split?.friendName) {
             const newFriend = { id: crypto.randomUUID(), name: aiResult.split.friendName, totalOwed: 0 };
             await supabase.from('friends').insert([newFriend]);
-            return { success: true, message: `Added friend: ${newFriend.name}` };
+            return { success: true, message: `✅ Added friend: *${newFriend.name}*` };
         }
         else if (intent === 'ADD_SPLIT' && aiResult.split) {
             const s = aiResult.split;
@@ -194,7 +339,14 @@ export async function executeIntent(aiResult: any, inputText: string): Promise<{
             await supabase.from('splits').insert([newSplit]);
             await supabase.from('friends').update({ totalOwed: Number(match.totalOwed) + Number(s.amount) }).eq('id', match.id);
 
-            return { success: true, message: `Logged split: ₹${s.amount} with ${match.name} for "${newSplit.description}".` };
+            return { success: true, message: `✅ Logged split: ₹${s.amount} with *${match.name}* for "${newSplit.description}".` };
+        }
+        else if (intent === 'VIEW_SPLITS') {
+            const { data: friends } = await supabase.from('friends').select('*');
+            if (!friends || friends.length === 0) return { success: true, message: "No friends or splits found." };
+            let msg = '👥 *Friends & Splits*\n\n';
+            friends.forEach(f => msg += `• *${f.name}*: owes ₹${f.totalOwed}\n`);
+            return { success: true, message: msg };
         }
 
         // Catch all for informational or unmatched
@@ -202,10 +354,10 @@ export async function executeIntent(aiResult: any, inputText: string): Promise<{
             return { success: true, message: aiResult.replyText };
         }
 
-        return { success: false, message: "I'm not sure how to handle that. Try asking me to add a transaction, reminder, or save a link." };
+        return { success: false, message: "I'm not exactly sure what to do with that. You can tell me to add a transaction, save a reminder, etc." };
 
     } catch (error: any) {
         console.error("Execute Intent Error:", error);
-        return { success: false, message: "An error occurred while executing the command." };
+        return { success: false, message: "⚠️ Sorry, I encountered an issue processing your request. Please ensure the API keys are correct, or try again later." };
     }
 }
