@@ -19,34 +19,46 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView }) => {
   ];
 
   return (
-    <aside className="w-20 md:w-64 flex flex-col h-screen shrink-0 relative z-10 bg-transparent text-white pt-4">
-      <div className="p-6 flex items-center gap-3 mb-6">
-        <div className="size-10 bg-white rounded-full flex items-center justify-center text-slate-800 font-bold">
-          <span className="text-xs">aved</span>
+    <aside className="fixed bottom-0 inset-x-0 h-[72px] md:relative md:h-screen w-full md:w-20 lg:w-64 flex flex-row md:flex-col shrink-0 z-[100] bg-slate-900/95 backdrop-blur-md md:bg-transparent text-white pt-0 md:pt-4 border-t border-white/10 md:border-none">
+      <div className="hidden md:flex p-6 items-center gap-3 mb-6">
+        <div className="size-10 bg-white rounded-full flex items-center justify-center text-slate-800 font-bold shrink-0">
+          <span className="text-xs">LS</span>
         </div>
         <div>
-          <h1 className="hidden md:block text-xl font-bold text-white leading-tight">LifeSync</h1>
-          <p className="hidden md:block text-[8px] font-bold text-white/50 tracking-widest uppercase">Ultimate V2.0</p>
+          <h1 className="hidden lg:block text-xl font-bold text-white leading-tight">LifeSync</h1>
+          <p className="hidden lg:block text-[8px] font-bold text-white/50 tracking-widest uppercase">Ultimate</p>
         </div>
       </div>
 
-      <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto custom-scrollbar">
+      <nav className="flex-1 flex flex-row md:flex-col items-center justify-start md:justify-start px-2 md:px-4 py-0 md:py-6 space-x-1 md:space-x-0 md:space-y-2 overflow-x-auto md:overflow-x-hidden md:overflow-y-auto no-scrollbar md:custom-scrollbar">
         {navItems.map((item) => (
           <button
             key={item.id}
             onClick={() => setCurrentView(item.id)}
-            className={`w-full flex items-center gap-4 px-6 py-3 rounded-full transition-all ${currentView === item.id
-              ? 'bg-white/20 text-white font-bold'
-              : 'text-white/70 hover:bg-white/10 hover:text-white'
+            title={item.label}
+            className={`flex-shrink-0 flex flex-col md:flex-row items-center justify-center gap-1 md:gap-4 px-3 md:px-6 py-2 md:py-3 rounded-2xl md:rounded-full transition-all ${currentView === item.id
+              ? 'bg-white/20 text-white font-bold md:w-full'
+              : 'text-white/70 hover:bg-white/10 hover:text-white md:w-full'
               }`}
           >
             <item.icon />
-            <span className="hidden md:block text-sm font-semibold">{item.label}</span>
+            <span className="text-[10px] md:text-sm font-semibold block md:hidden lg:block whitespace-nowrap">{item.label}</span>
           </button>
         ))}
+        {/* Settings button specifically in the mobile nav */}
+        <button
+          onClick={() => setCurrentView(View.SETTINGS)}
+          className={`flex-shrink-0 flex md:hidden flex-col items-center justify-center gap-1 px-3 py-2 rounded-2xl transition-all ${currentView === View.SETTINGS
+            ? 'bg-white/20 text-white font-bold'
+            : 'text-white/70 hover:bg-white/10 hover:text-white'
+            }`}
+        >
+          <ICONS.Settings />
+          <span className="text-[10px] font-semibold block whitespace-nowrap">Settings</span>
+        </button>
       </nav>
 
-      <div className="p-4">
+      <div className="hidden md:block p-4 mt-auto">
         <button
           onClick={() => setCurrentView(View.SETTINGS)}
           className={`w-full flex items-center gap-4 px-6 py-3 rounded-full transition-all ${currentView === View.SETTINGS
@@ -55,7 +67,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView }) => {
             }`}
         >
           <ICONS.Settings />
-          <span className="hidden md:block text-sm font-semibold">Settings</span>
+          <span className="hidden lg:block text-sm font-semibold">Settings</span>
         </button>
       </div>
     </aside>

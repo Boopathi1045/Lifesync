@@ -48,11 +48,18 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
     let durationMins = Math.floor((now - napStartTime) / 60000);
     if (durationMins < 1) durationMins = 1; // Minimum 1 minute for a logged nap
 
+    // Explicitly parse local time strings to prevent timezone drifting on save
     const startObj = new Date(napStartTime);
     const endObj = new Date(now);
 
-    const startStr = `${startObj.getHours().toString().padStart(2, '0')}:${startObj.getMinutes().toString().padStart(2, '0')}`;
-    const endStr = `${endObj.getHours().toString().padStart(2, '0')}:${endObj.getMinutes().toString().padStart(2, '0')}`;
+    // Using Int18Locale to force exactly the local time values the user expects to see 
+    // even if the internal clock string gets converted differently by Supabase later
+    const formatLocalTime = (d: Date) => {
+      return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' }).replace('24:', '00:');
+    }
+
+    const startStr = formatLocalTime(startObj);
+    const endStr = formatLocalTime(endObj);
 
     const newNapRecord = {
       start: startStr,
@@ -446,6 +453,29 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
                           </div>
                         </div>
                         <div className="absolute top-0 right-0 h-24 w-32 bg-gradient-to-r from-orange-200 to-amber-100 rounded-full blur-2xl opacity-40 -mr-10 -mt-10 pointer-events-none"></div>
+                      </div>
+
+                      {/* Nap Start Time Stat Block */}
+                      <div className="bg-slate-50 p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden">
+                        <div className="flex justify-between items-center mb-4 z-10">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Nap Time</p>
+                            <p className="font-bold text-xl text-slate-800">{getAvgClockTime(generalNapStart, false)}</p>
+                          </div>
+                          <span className="material-symbols-rounded text-rose-300 opacity-50 text-3xl">schedule</span>
+                        </div>
+                        <div className="flex items-center gap-6 z-10">
+                          <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekdays</p>
+                            <p className="font-bold text-sm text-slate-700">{getAvgClockTime(weekdayNapStart, false)}</p>
+                          </div>
+                          <div className="h-4 w-px bg-slate-200"></div>
+                          <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekends</p>
+                            <p className="font-bold text-sm text-slate-700">{getAvgClockTime(weekendNapStart, false)}</p>
+                          </div>
+                        </div>
+                        <div className="absolute top-0 right-0 h-24 w-32 bg-gradient-to-r from-rose-200 to-pink-200 rounded-full blur-2xl opacity-40 -mr-10 -mt-10 pointer-events-none"></div>
                       </div>
 
                       {/* Sleep Time Stat Block */}

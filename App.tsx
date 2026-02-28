@@ -301,10 +301,10 @@ const App: React.FC = () => {
     <>
       <div className="flex bg-transparent h-screen overflow-hidden">
         <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
-        <main className="flex-1 overflow-y-auto custom-scrollbar relative">
+        <main className="flex-1 overflow-y-auto custom-scrollbar relative pb-24 md:pb-0">
           {renderContent()}
           {(syncing || syncError) && (
-            <div className={`fixed bottom-6 right-6 px-5 py-2.5 rounded-2xl shadow-2xl flex items-center gap-3 z-[100] ${syncError ? 'bg-rose-500' : 'bg-emerald-500'} text-white transition-all`}>
+            <div className={`fixed bottom-24 md:bottom-6 right-6 px-5 py-2.5 rounded-2xl shadow-2xl flex items-center gap-3 z-[100] ${syncError ? 'bg-rose-500' : 'bg-emerald-500'} text-white transition-all`}>
               {syncError ? (
                 <div className="flex flex-col">
                   <span className="text-[10px] font-black uppercase">Sync Error</span>

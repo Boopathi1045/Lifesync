@@ -409,8 +409,11 @@ bot.on('message', async (msg) => {
                 bot.sendMessage(chatId, `🌙 Sleep well! Logged sleep time as ${timeStr}.`);
             }
             else if (intent === 'START_NAP') {
-                if (!userStates[chatId]) userStates[chatId] = { step: '', action: '' };
-                userStates[chatId].napStartTime = Date.now();
+                if (!userStates[chatId]) {
+                    userStates[chatId] = { step: '', action: '', napStartTime: Date.now() };
+                } else {
+                    userStates[chatId].napStartTime = Date.now();
+                }
                 bot.sendMessage(chatId, `Nap started... sleep well! 💤`);
             }
             else if (intent === 'END_NAP') {
@@ -424,10 +427,16 @@ bot.on('message', async (msg) => {
                 let durationMins = Math.floor((now - napStartTime) / 60000);
                 if (durationMins < 1) durationMins = 1;
 
-                const startObj = new Date(napStartTime);
-                const endObj = new Date(now);
-                const startStr = `${startObj.getHours().toString().padStart(2, '0')}:${startObj.getMinutes().toString().padStart(2, '0')}`;
-                const endStr = `${endObj.getHours().toString().padStart(2, '0')}:${endObj.getMinutes().toString().padStart(2, '0')}`;
+                // On cloud environments, Date methods might return UTC. Force IST string formatting explicitly.
+                const formatISTClockTime = (epochMs: number) => {
+                    const d = new Date(epochMs);
+                    const timeString = d.toLocaleTimeString('en-US', { timeZone: 'Asia/Kolkata', hour12: false, hour: '2-digit', minute: '2-digit' });
+                    // Handle edge cases where 24:00 is returned instead of 00:00
+                    return timeString.replace('24:', '00:');
+                };
+
+                const startStr = formatISTClockTime(napStartTime);
+                const endStr = formatISTClockTime(now);
 
                 const newNapRecord = {
                     start: startStr,

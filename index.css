@@ -18,6 +18,17 @@
 }
 
 @layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    /* IE and Edge */
+    scrollbar-width: none;
+    /* Firefox */
+  }
+
   .glass-panel {
     @apply bg-white dark:bg-slate-900 border-none shadow-[0_8px_30px_rgb(0, 0, 0, 0.04)] dark:shadow-[0_8px_30px_rgb(0, 0, 0, 0.2)];
   }
