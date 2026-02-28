@@ -130,6 +130,7 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
 
   const generalNapStart: string[] = [], weekdayNapStart: string[] = [], weekendNapStart: string[] = [];
   const generalNapDur: number[] = [], weekdayNapDur: number[] = [], weekendNapDur: number[] = [];
+  const generalTotalSleepDur: number[] = [], weekdayTotalSleepDur: number[] = [], weekendTotalSleepDur: number[] = [];
 
   const sortedHistory = [...(habitHistory || [])].sort((a, b) => a.date.localeCompare(b.date));
 
@@ -166,6 +167,19 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
         // "This morning" was Saturday (6) or Sunday (0) = Weekend sleep duration
         if (dayOfWeek === 0 || dayOfWeek === 6) weekendDur.push(diff);
         else weekdayDur.push(diff);
+
+        let dailyNaps = 0;
+        if (h.naps && Array.isArray(h.naps)) {
+          dailyNaps = h.naps.reduce((acc: number, nap: any) => {
+            if (typeof nap === 'number') return acc + nap;
+            if (nap && typeof nap === 'object' && typeof nap.duration === 'number') return acc + nap.duration;
+            return acc;
+          }, 0);
+        }
+        const totalSleep = diff + dailyNaps;
+        generalTotalSleepDur.push(totalSleep);
+        if (dayOfWeek === 0 || dayOfWeek === 6) weekendTotalSleepDur.push(totalSleep);
+        else weekdayTotalSleepDur.push(totalSleep);
       }
     }
 
@@ -466,7 +480,7 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
                       <div className="bg-slate-50 p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden">
                         <div className="flex justify-between items-center mb-4 z-10">
                           <div>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Sleep Duration</p>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Night Sleep</p>
                             <p className="font-bold text-xl text-slate-800">{getAvgDur(generalDur)}</p>
                           </div>
                           <span className="material-symbols-rounded text-blue-300 opacity-50 text-3xl">hourglass_bottom</span>
@@ -538,6 +552,29 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
                           </div>
                         </div>
                         <div className="absolute top-0 right-0 h-24 w-32 bg-gradient-to-r from-rose-200 to-pink-200 rounded-full blur-2xl opacity-40 -mr-10 -mt-10 pointer-events-none"></div>
+                      </div>
+
+                      {/* Total Sleep Stat Block */}
+                      <div className="bg-slate-50 p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden">
+                        <div className="flex justify-between items-center mb-4 z-10">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Avg Sleep <span className="text-[8px] opacity-70">(Night + Nap)</span></p>
+                            <p className="font-bold text-xl text-slate-800">{getAvgDur(generalTotalSleepDur)}</p>
+                          </div>
+                          <span className="material-symbols-rounded text-indigo-300 opacity-50 text-3xl">hotel</span>
+                        </div>
+                        <div className="flex items-center gap-6 z-10">
+                          <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekdays</p>
+                            <p className="font-bold text-sm text-slate-700">{getAvgDur(weekdayTotalSleepDur)}</p>
+                          </div>
+                          <div className="h-4 w-px bg-slate-200"></div>
+                          <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekends</p>
+                            <p className="font-bold text-sm text-slate-700">{getAvgDur(weekendTotalSleepDur)}</p>
+                          </div>
+                        </div>
+                        <div className="absolute top-0 right-0 h-24 w-32 bg-gradient-to-r from-indigo-200 to-purple-200 rounded-full blur-2xl opacity-40 -mr-10 -mt-10 pointer-events-none"></div>
                       </div>
 
                       <div className="bg-slate-50 p-5 rounded-3xl flex items-center justify-between relative overflow-hidden">
