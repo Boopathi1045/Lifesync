@@ -65,59 +65,85 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
     return { day: i + 1, val: isToday ? waterIntake : (existing ? existing.water_intake : null) };
   });
 
-  const validWakeTimes = habitHistory?.map(h => h.wake_up_time).filter(Boolean) || [];
-  const validSleepTimes = habitHistory?.map(h => h.sleep_time).filter(Boolean) || [];
-  const validWaterIntakes = habitHistory?.map(h => h.water_intake).filter(v => v !== null && v !== undefined) || [];
-
-  const avgWater = validWaterIntakes.length ? (validWaterIntakes.reduce((a, b) => a + b, 0) / validWaterIntakes.length).toFixed(1) : '0';
-
   const parseTime = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
   const formatTime = (mins: number) => {
-    if (isNaN(mins)) return 'N/A';
-    const h = Math.floor(mins / 60) % 24;
+    if (isNaN(mins)) return '-';
+    // Handle wrap-around back to normal time
+    mins = ((mins % (24 * 60)) + (24 * 60)) % (24 * 60);
+    const h = Math.floor(mins / 60);
     const m = Math.floor(mins % 60);
     const isPM = h >= 12;
     const h12 = h % 12 || 12;
     return `${h12.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} ${isPM ? 'PM' : 'AM'}`;
   };
 
-  const calculateSleepDuration = (wakeArr: string[], sleepArr: string[]) => {
-    if (!wakeArr.length || !sleepArr.length) return 0;
-    let totalMins = 0;
-    let count = 0;
-    for (let i = 0; i < Math.min(wakeArr.length, sleepArr.length); i++) {
-      let w = parseTime(wakeArr[i]);
-      let s = parseTime(sleepArr[i]);
-      // If wake time is less than sleep time, it means they woke up the next day
-      // Sleep happened before midnight or after midnight natively.
-      // Actually, normally sleep is ~22:00-02:00 and wake is 06:00-10:00.
-      // If s > w, like sleep 23:00, wake 07:00.
-      // Duration = (24*60 - s) + w
-      // If s < w, like sleep 02:00, wake 08:00
-      // Duration = w - s
-      let diff = w - s;
-      if (diff < 0) {
-        diff = (24 * 60 - s) + w;
-      }
-      totalMins += diff;
-      count++;
-    }
-    return count > 0 ? totalMins / count : 0;
-  };
-
   const formatDurationMs = (mins: number) => {
-    if (mins === 0) return 'N/A';
+    if (isNaN(mins) || mins === 0) return '-';
     const h = Math.floor(mins / 60);
     const m = Math.floor(mins % 60);
     return `${h}h ${m}m`;
   };
 
-  const avgWake = validWakeTimes.length ? formatTime(validWakeTimes.reduce((a, b) => a + parseTime(b), 0) / validWakeTimes.length) : 'N/A';
-  // Use duration instead of time average
-  const avgSleepDuration = calculateSleepDuration(validWakeTimes, validSleepTimes);
-  const avgSleepDisplay = formatDurationMs(avgSleepDuration);
+  const getAvgClockTime = (arr: string[], isSleep: boolean) => {
+    if (!arr.length) return '-';
+    let totalMins = 0;
+    arr.forEach(t => {
+      let m = parseTime(t);
+      if (isSleep && m < 12 * 60) {
+        m += 24 * 60; // Shift morning sleep times to the same "night" mathematically
+      }
+      totalMins += m;
+    });
+    return formatTime(totalMins / arr.length);
+  };
+  const getAvgDur = (arr: number[]) => arr.length ? formatDurationMs(arr.reduce((a, b) => a + b, 0) / arr.length) : '-';
 
-  // Calculate total nap time today
+  const generalWake: string[] = [], weekdayWake: string[] = [], weekendWake: string[] = [];
+  const generalSleep: string[] = [], weekdaySleep: string[] = [], weekendSleep: string[] = [];
+  const generalDur: number[] = [], weekdayDur: number[] = [], weekendDur: number[] = [];
+
+  const sortedHistory = [...(habitHistory || [])].sort((a, b) => a.date.localeCompare(b.date));
+
+  sortedHistory.forEach((h, index) => {
+    const d = new Date(h.date);
+    const dayOfWeek = d.getDay(); // 0 = Sun, 1 = Mon, 5 = Fri, 6 = Sat
+
+    if (h.wake_up_time) {
+      generalWake.push(h.wake_up_time);
+      if (dayOfWeek === 0 || dayOfWeek === 6) weekendWake.push(h.wake_up_time);
+      else weekdayWake.push(h.wake_up_time);
+    }
+
+    if (h.sleep_time) {
+      generalSleep.push(h.sleep_time);
+      // Weekend sleep happens on Friday (5) or Saturday (6) night
+      if (dayOfWeek === 5 || dayOfWeek === 6) weekendSleep.push(h.sleep_time);
+      else weekdaySleep.push(h.sleep_time);
+    }
+
+    if (index > 0 && h.wake_up_time) {
+      const prev = sortedHistory[index - 1];
+      const prevDate = new Date(prev.date);
+      const expectedYesterday = new Date(d);
+      expectedYesterday.setDate(d.getDate() - 1);
+
+      if (prevDate.toISOString().split('T')[0] === expectedYesterday.toISOString().split('T')[0] && prev.sleep_time) {
+        let w = parseTime(h.wake_up_time);
+        let s = parseTime(prev.sleep_time);
+        let diff = w - s;
+        if (diff < 0) diff = (24 * 60 - s) + w;
+
+        generalDur.push(diff);
+        // "This morning" was Saturday (6) or Sunday (0) = Weekend sleep duration
+        if (dayOfWeek === 0 || dayOfWeek === 6) weekendDur.push(diff);
+        else weekdayDur.push(diff);
+      }
+    }
+  });
+
+  const validWaterIntakes = habitHistory?.map(h => h.water_intake).filter(v => v !== null && v !== undefined) || [];
+  const avgWater = validWaterIntakes.length ? (validWaterIntakes.reduce((a, b) => a + b, 0) / validWaterIntakes.length).toFixed(1) : '0';
+
   const totalNapMins = naps.reduce((a, b) => a + b, 0);
   const napDisplay = totalNapMins > 0 ? `${Math.floor(totalNapMins / 60)}h ${totalNapMins % 60}m` : '0m';
 
@@ -322,39 +348,96 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
                 )
               ) : (
                 <div className="w-full space-y-6">
-                  {validWakeTimes.length === 0 && validSleepTimes.length === 0 && validWaterIntakes.length === 0 ? (
+                  {generalWake.length === 0 && generalSleep.length === 0 && validWaterIntakes.length === 0 ? (
                     <div className="w-full h-24 flex items-center justify-center">
                       <p className="text-sm font-bold text-slate-400">Data is not there</p>
                     </div>
                   ) : (
                     <>
-                      <div className="bg-slate-50 p-4 rounded-2xl flex items-center justify-between">
-                        <div>
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Wake Up</p>
-                          <p className="font-bold text-lg text-slate-800">{avgWake}</p>
+                      {/* Wake Up Stat Block */}
+                      <div className="bg-slate-50 p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden">
+                        <div className="flex justify-between items-center mb-4 z-10">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Wake Up</p>
+                            <p className="font-bold text-xl text-slate-800">{getAvgClockTime(generalWake, false)}</p>
+                          </div>
+                          <span className="material-symbols-rounded text-orange-300 opacity-50 text-3xl">wb_sunny</span>
                         </div>
-                        <div className="h-10 w-24 bg-gradient-to-r from-orange-200 to-amber-100 rounded-full blur-sm"></div>
-                      </div>
-                      <div className="bg-slate-50 p-4 rounded-2xl flex items-center justify-between">
-                        <div>
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Sleep Duration</p>
-                          <p className="font-bold text-lg text-slate-800">{avgSleepDisplay}</p>
+                        <div className="flex items-center gap-6 z-10">
+                          <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekdays</p>
+                            <p className="font-bold text-sm text-slate-700">{getAvgClockTime(weekdayWake, false)}</p>
+                          </div>
+                          <div className="h-4 w-px bg-slate-200"></div>
+                          <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekends</p>
+                            <p className="font-bold text-sm text-slate-700">{getAvgClockTime(weekendWake, false)}</p>
+                          </div>
                         </div>
-                        <div className="h-10 w-24 bg-gradient-to-r from-indigo-200 to-blue-200 rounded-full blur-sm"></div>
+                        <div className="absolute top-0 right-0 h-24 w-32 bg-gradient-to-r from-orange-200 to-amber-100 rounded-full blur-2xl opacity-40 -mr-10 -mt-10 pointer-events-none"></div>
                       </div>
-                      <div className="bg-slate-50 p-4 rounded-2xl flex items-center justify-between">
+
+                      {/* Sleep Time Stat Block */}
+                      <div className="bg-slate-50 p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden">
+                        <div className="flex justify-between items-center mb-4 z-10">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Sleep Time</p>
+                            <p className="font-bold text-xl text-slate-800">{getAvgClockTime(generalSleep, true)}</p>
+                          </div>
+                          <span className="material-symbols-rounded text-indigo-300 opacity-50 text-3xl">bedtime</span>
+                        </div>
+                        <div className="flex items-center gap-6 z-10">
+                          <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekdays</p>
+                            <p className="font-bold text-sm text-slate-700">{getAvgClockTime(weekdaySleep, true)}</p>
+                          </div>
+                          <div className="h-4 w-px bg-slate-200"></div>
+                          <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekends</p>
+                            <p className="font-bold text-sm text-slate-700">{getAvgClockTime(weekendSleep, true)}</p>
+                          </div>
+                        </div>
+                        <div className="absolute top-0 right-0 h-24 w-32 bg-gradient-to-r from-indigo-200 to-blue-200 rounded-full blur-2xl opacity-40 -mr-10 -mt-10 pointer-events-none"></div>
+                      </div>
+
+                      {/* Sleep Duration Stat Block */}
+                      <div className="bg-slate-50 p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden">
+                        <div className="flex justify-between items-center mb-4 z-10">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Sleep Duration</p>
+                            <p className="font-bold text-xl text-slate-800">{getAvgDur(generalDur)}</p>
+                          </div>
+                          <span className="material-symbols-rounded text-blue-300 opacity-50 text-3xl">hourglass_bottom</span>
+                        </div>
+                        <div className="flex items-center gap-6 z-10">
+                          <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekdays</p>
+                            <p className="font-bold text-sm text-slate-700">{getAvgDur(weekdayDur)}</p>
+                          </div>
+                          <div className="h-4 w-px bg-slate-200"></div>
+                          <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekends</p>
+                            <p className="font-bold text-sm text-slate-700">{getAvgDur(weekendDur)}</p>
+                          </div>
+                        </div>
+                        <div className="absolute top-0 right-0 h-24 w-32 bg-gradient-to-r from-blue-200 to-cyan-200 rounded-full blur-2xl opacity-40 -mr-10 -mt-10 pointer-events-none"></div>
+                      </div>
+
+                      {/* Other single line stats */}
+                      <div className="bg-slate-50 p-5 rounded-3xl flex items-center justify-between relative overflow-hidden">
                         <div>
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Water Intake</p>
                           <p className="font-bold text-lg text-slate-800">{avgWater} {parseFloat(avgWater) === 1 ? 'Glass' : 'Glasses'}</p>
                         </div>
-                        <div className="h-10 w-32 bg-gradient-to-r from-cyan-200 to-blue-200 rounded-full blur-sm"></div>
+                        <div className="absolute right-0 top-0 h-10 w-32 bg-gradient-to-r from-cyan-200 to-blue-200 rounded-full blur-xl opacity-50 pointer-events-none -mr-10 -mt-2"></div>
                       </div>
-                      <div className="bg-slate-50 p-4 rounded-2xl flex items-center justify-between">
+
+                      <div className="bg-slate-50 p-5 rounded-3xl flex items-center justify-between relative overflow-hidden">
                         <div>
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Today's Naps</p>
                           <p className="font-bold text-lg text-slate-800">{napDisplay} <span className="text-xs text-slate-500 font-normal">({naps.length} logs)</span></p>
                         </div>
-                        <div className="h-10 w-32 bg-gradient-to-r from-purple-200 to-pink-200 rounded-full blur-sm"></div>
+                        <div className="absolute right-0 top-0 h-10 w-32 bg-gradient-to-r from-purple-200 to-pink-200 rounded-full blur-xl opacity-50 pointer-events-none -mr-10 -mt-2"></div>
                       </div>
                     </>
                   )}
