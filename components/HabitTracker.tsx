@@ -252,8 +252,41 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
         </div>
       </header>
 
-      {/* Morning & Evening Check-ins */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {/* Top Section: Water, Morning, Evening */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
+        {/* Main Progress Card (Water) */}
+        <div className="bg-[#c1e5ed] p-8 text-slate-900 rounded-[2rem] shadow-sm flex flex-col items-center justify-center relative overflow-hidden h-full">
+          <div className="relative size-40 mb-6 mt-2">
+            <svg className="size-full -rotate-90" viewBox="0 0 100 100">
+              <circle className="text-[#a4d7e3]" strokeWidth="8" stroke="currentColor" fill="transparent" r="44" cx="50" cy="50" />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+              <span className="text-5xl font-black leading-none text-slate-900">{waterIntake}</span>
+              <span className="text-[10px] text-[#5f7f8a] font-black uppercase tracking-widest mt-1">{waterIntake === 1 ? 'Glass' : 'Glasses'}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 w-full max-w-[200px] justify-between">
+            <button
+              onClick={() => setWaterIntake(Math.max(0, waterIntake - 1))}
+              className="size-12 bg-white/50 text-slate-900 rounded-xl flex items-center justify-center hover:bg-white transition-colors text-xl font-bold"
+            >
+              -
+            </button>
+            <button
+              onClick={() => setWaterIntake(prev => prev + 1)}
+              className="h-12 flex-1 bg-slate-800 text-white rounded-xl font-bold text-[11px] tracking-widest uppercase shadow-md hover:-translate-y-0.5 transition-transform"
+            >
+              Add
+            </button>
+            <button
+              onClick={() => setWaterIntake(prev => prev + 1)}
+              className="size-12 bg-white/50 text-slate-900 rounded-xl flex items-center justify-center hover:bg-white transition-colors text-xl font-bold"
+            >
+              +
+            </button>
+          </div>
+        </div>
         {!wakeUpTime ? (
           <div className="bg-gradient-to-br from-amber-100 to-orange-100 p-8 rounded-[2rem] shadow-sm text-slate-900 flex flex-col justify-between">
             <div>
@@ -313,47 +346,9 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Main Progress Card */}
-        <div className="lg:col-span-7 bg-[#c1e5ed] p-12 text-slate-900 rounded-[3rem] shadow-sm flex flex-col items-center justify-center relative overflow-hidden">
-          <div className="relative size-64 mb-10 mt-6">
-            <svg className="size-full -rotate-90" viewBox="0 0 100 100">
-              <circle className="text-[#a4d7e3]" strokeWidth="8" stroke="currentColor" fill="transparent" r="44" cx="50" cy="50" />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-              <span className="text-7xl font-black leading-none text-slate-900">{waterIntake}</span>
-              <span className="text-xs text-[#5f7f8a] font-black uppercase tracking-widest mt-2">{waterIntake === 1 ? 'Glass' : 'Glasses'}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-6">
-            <button
-              onClick={() => setWaterIntake(Math.max(0, waterIntake - 1))}
-              className="size-16 bg-white/50 text-slate-900 rounded-2xl flex items-center justify-center hover:bg-white transition-colors text-2xl font-bold"
-            >
-              -
-            </button>
-            <button
-              onClick={() => setWaterIntake(prev => prev + 1)}
-              className="h-16 px-12 bg-slate-800 text-white rounded-[2rem] font-bold text-[13px] tracking-widest uppercase shadow-md hover:-translate-y-0.5 transition-transform"
-            >
-              Add 1 Glass
-            </button>
-            <button
-              onClick={() => setWaterIntake(prev => prev + 1)}
-              className="size-16 bg-white/50 text-slate-900 rounded-2xl flex items-center justify-center hover:bg-white transition-colors text-2xl font-bold"
-            >
-              +
-            </button>
-          </div>
-
-          <p className="mt-8 text-sm font-bold text-[#5f7f8a]">
-            Keep yourself hydrated throughout the day!
-          </p>
-        </div>
-
+      <div className="flex flex-col gap-10 items-center w-full">
         {/* Analytics & Stats */}
-        <div className="lg:col-span-5 space-y-6">
+        <div className="w-full space-y-6">
           <div className="bg-white p-8 rounded-[2.5rem] shadow-sm text-slate-900">
             <div className="flex items-center justify-between mb-8">
               <h3 className="font-black text-xl tracking-tight">Analytics</h3>
@@ -423,9 +418,9 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
                   </div>
                 )
               ) : (
-                <div className="w-full space-y-6">
+                <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {generalWake.length === 0 && generalSleep.length === 0 && validWaterIntakes.length === 0 ? (
-                    <div className="w-full h-24 flex items-center justify-center">
+                    <div className="w-full col-span-1 sm:col-span-2 h-24 flex items-center justify-center">
                       <p className="text-sm font-bold text-slate-400">Data is not there</p>
                     </div>
                   ) : (
@@ -483,7 +478,7 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Night Sleep</p>
                             <p className="font-bold text-xl text-slate-800">{getAvgDur(generalDur)}</p>
                           </div>
-                          <span className="material-symbols-rounded text-blue-300 opacity-50 text-3xl">hourglass_bottom</span>
+                          <span className="material-symbols-rounded text-blue-300 opacity-50 text-3xl">bedtime</span>
                         </div>
                         <div className="flex items-center gap-6 z-10">
                           <div>
@@ -497,15 +492,6 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
                           </div>
                         </div>
                         <div className="absolute top-0 right-0 h-24 w-32 bg-gradient-to-r from-blue-200 to-cyan-200 rounded-full blur-2xl opacity-40 -mr-10 -mt-10 pointer-events-none"></div>
-                      </div>
-
-                      {/* Other single line stats */}
-                      <div className="bg-slate-50 p-5 rounded-3xl flex items-center justify-between relative overflow-hidden">
-                        <div>
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Water Intake</p>
-                          <p className="font-bold text-lg text-slate-800">{avgWater} {parseFloat(avgWater) === 1 ? 'Glass' : 'Glasses'}</p>
-                        </div>
-                        <div className="absolute right-0 top-0 h-10 w-32 bg-gradient-to-r from-cyan-200 to-blue-200 rounded-full blur-xl opacity-50 pointer-events-none -mr-10 -mt-2"></div>
                       </div>
 
                       {/* Nap Duration Stat Block */}
@@ -531,31 +517,8 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
                         <div className="absolute top-0 right-0 h-24 w-32 bg-gradient-to-r from-teal-200 to-emerald-200 rounded-full blur-2xl opacity-40 -mr-10 -mt-10 pointer-events-none"></div>
                       </div>
 
-                      {/* Nap Start Time Stat Block */}
-                      <div className="bg-slate-50 p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden">
-                        <div className="flex justify-between items-center mb-4 z-10">
-                          <div>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Nap Time</p>
-                            <p className="font-bold text-xl text-slate-800">{getAvgClockTime(generalNapStart, false)}</p>
-                          </div>
-                          <span className="material-symbols-rounded text-rose-300 opacity-50 text-3xl">watch_later</span>
-                        </div>
-                        <div className="flex items-center gap-6 z-10">
-                          <div>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekdays</p>
-                            <p className="font-bold text-sm text-slate-700">{getAvgClockTime(weekdayNapStart, false)}</p>
-                          </div>
-                          <div className="h-4 w-px bg-slate-200"></div>
-                          <div>
-                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekends</p>
-                            <p className="font-bold text-sm text-slate-700">{getAvgClockTime(weekendNapStart, false)}</p>
-                          </div>
-                        </div>
-                        <div className="absolute top-0 right-0 h-24 w-32 bg-gradient-to-r from-rose-200 to-pink-200 rounded-full blur-2xl opacity-40 -mr-10 -mt-10 pointer-events-none"></div>
-                      </div>
-
                       {/* Total Sleep Stat Block */}
-                      <div className="bg-slate-50 p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden">
+                      <div className="bg-slate-50 p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden sm:col-span-2">
                         <div className="flex justify-between items-center mb-4 z-10">
                           <div>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Avg Sleep <span className="text-[8px] opacity-70">(Night + Nap)</span></p>
@@ -577,7 +540,16 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
                         <div className="absolute top-0 right-0 h-24 w-32 bg-gradient-to-r from-indigo-200 to-purple-200 rounded-full blur-2xl opacity-40 -mr-10 -mt-10 pointer-events-none"></div>
                       </div>
 
-                      <div className="bg-slate-50 p-5 rounded-3xl flex items-center justify-between relative overflow-hidden">
+                      {/* Other single line stats */}
+                      <div className="bg-slate-50 p-5 rounded-3xl flex items-center justify-between relative overflow-hidden sm:col-span-2 lg:col-span-3 mt-2">
+                        <div>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Water Intake</p>
+                          <p className="font-bold text-lg text-slate-800">{avgWater} {parseFloat(avgWater) === 1 ? 'Glass' : 'Glasses'}</p>
+                        </div>
+                        <div className="absolute right-0 top-0 h-10 w-32 bg-gradient-to-r from-cyan-200 to-blue-200 rounded-full blur-xl opacity-50 pointer-events-none -mr-10 -mt-2"></div>
+                      </div>
+
+                      <div className="bg-slate-50 p-5 rounded-3xl flex items-center justify-between relative overflow-hidden sm:col-span-2 lg:col-span-3">
                         <div>
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Today's Naps</p>
                           <p className="font-bold text-lg text-slate-800">{napDisplay} <span className="text-xs text-slate-500 font-normal">({(naps || []).length} logs)</span></p>
@@ -590,7 +562,7 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
               )}
             </div>
             {analyticsTab === 'MONTHLY' && monthlyData.some(d => d.val !== null) && (
-              <div className="flex justify-between mt-2 px-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              <div className="flex justify-between mt-6 px-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                 <span>Day 1</span>
                 <span>Day 30</span>
               </div>
