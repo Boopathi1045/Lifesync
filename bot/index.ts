@@ -407,6 +407,22 @@ bot.on('message', async (msg) => {
                 await supabase.from('daily_habits').upsert({ date: todayStr, sleep_time: timeStr }, { onConflict: 'date' });
                 bot.sendMessage(chatId, `🌙 Sleep well! Logged sleep time as ${timeStr}.`);
             }
+            else if (intent === 'ADD_NAP' && aiResult.habit?.durationMins) {
+                const mins = aiResult.habit.durationMins;
+                const { todayStr } = getISTDateInfo();
+
+                // Fetch the current record to get existing naps
+                const { data: habit } = await supabase.from('daily_habits').select('*').eq('date', todayStr).single();
+                const currentNaps = habit?.naps || [];
+
+                const newNaps = [...currentNaps, mins];
+                await supabase.from('daily_habits').upsert({ date: todayStr, naps: newNaps }, { onConflict: 'date' });
+
+                const totalMins = newNaps.reduce((a: number, b: number) => a + b, 0);
+                const formatDuration = (m: number) => m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
+
+                bot.sendMessage(chatId, `😴 Logged a ${formatDuration(mins)} nap. Total today: ${formatDuration(totalMins)}.`);
+            }
             else if (intent === 'UPDATE_HABIT_COUNT') {
                 const count = aiResult.habit?.count || 1;
                 const { todayStr } = getISTDateInfo();
@@ -1796,9 +1812,7 @@ const checkDailyPrompts = async () => {
                 parse_mode: 'Markdown',
                 reply_markup: {
                     inline_keyboard: [
-                        [{ text: '🌅 I just woke up now', callback_data: 'action_wake_up_now' }],
-                        [{ text: '06:00 AM', callback_data: 'action_wake_up_06:00' }, { text: '07:00 AM', callback_data: 'action_wake_up_07:00' }],
-                        [{ text: '08:00 AM', callback_data: 'action_wake_up_08:00' }, { text: '09:00 AM', callback_data: 'action_wake_up_09:00' }]
+                        [{ text: '🌅 I just woke up now', callback_data: 'action_wake_up_now' }]
                     ]
                 }
             }).catch(console.error);

@@ -49,6 +49,7 @@ const App: React.FC = () => {
   const [waterGoal] = useState(8);
   const [wakeUpTime, setWakeUpTime] = useState<string>('');
   const [sleepTime, setSleepTime] = useState<string>('');
+  const [naps, setNaps] = useState<number[]>([]);
   const [habitHistory, setHabitHistory] = useState<any[]>([]);
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -162,6 +163,7 @@ const App: React.FC = () => {
             setWaterIntake(todayHabit.water_intake);
             setWakeUpTime(todayHabit.wake_up_time || '');
             setSleepTime(todayHabit.sleep_time || '');
+            setNaps(todayHabit.naps || []);
           }
         }
 
@@ -225,10 +227,11 @@ const App: React.FC = () => {
         date: todayStr,
         water_intake: waterIntake,
         wake_up_time: wakeUpTime,
-        sleep_time: sleepTime
+        sleep_time: sleepTime,
+        naps: naps
       });
     }
-  }, [waterIntake, wakeUpTime, sleepTime, todayStr, saveToDB]);
+  }, [waterIntake, wakeUpTime, sleepTime, naps, todayStr, saveToDB]);
 
   const renderContent = () => {
     if (isLoading) {
@@ -266,7 +269,7 @@ const App: React.FC = () => {
           saveReminderToDB={saveReminderToDB}
         />;
       case View.HABITS:
-        return <HabitTracker habitHistory={habitHistory} waterIntake={waterIntake} setWaterIntake={setWaterIntake} waterGoal={waterGoal} wakeUpTime={wakeUpTime} setWakeUpTime={setWakeUpTime} sleepTime={sleepTime} setSleepTime={setSleepTime} />;
+        return <HabitTracker habitHistory={habitHistory} waterIntake={waterIntake} setWaterIntake={setWaterIntake} waterGoal={waterGoal} wakeUpTime={wakeUpTime} setWakeUpTime={setWakeUpTime} sleepTime={sleepTime} setSleepTime={setSleepTime} naps={naps} setNaps={setNaps} />;
       case View.PASSWORDS:
         return <PasswordManager passwords={passwords} setPasswords={setPasswords} removeFromDB={removeFromDB} saveToDB={saveToDB} />;
       case View.WATCH_LATER:

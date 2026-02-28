@@ -10,12 +10,16 @@ interface HabitTrackerProps {
   setWakeUpTime: (time: string) => void;
   sleepTime: string;
   setSleepTime: (time: string) => void;
+  naps: number[];
+  setNaps: (naps: number[] | ((prev: number[]) => number[])) => void;
 }
 
-const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, setWaterIntake, waterGoal, wakeUpTime, setWakeUpTime, sleepTime, setSleepTime }) => {
+const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, setWaterIntake, waterGoal, wakeUpTime, setWakeUpTime, sleepTime, setSleepTime, naps, setNaps }) => {
   const [analyticsTab, setAnalyticsTab] = useState<'WEEKLY' | 'MONTHLY' | 'STATS'>('WEEKLY');
   const [showManualInput, setShowManualInput] = useState(false);
+  const [showNapInput, setShowNapInput] = useState(false);
   const [tempIntake, setTempIntake] = useState(waterIntake.toString());
+  const [tempNap, setTempNap] = useState('');
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +27,16 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
     if (!isNaN(val)) {
       setWaterIntake(val);
       setShowManualInput(false);
+    }
+  };
+
+  const handleNapSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const val = parseInt(tempNap);
+    if (!isNaN(val) && val > 0) {
+      setNaps(prev => [...prev, val]);
+      setTempNap('');
+      setShowNapInput(false);
     }
   };
 
@@ -67,8 +81,45 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
     return `${h12.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')} ${isPM ? 'PM' : 'AM'}`;
   };
 
+  const calculateSleepDuration = (wakeArr: string[], sleepArr: string[]) => {
+    if (!wakeArr.length || !sleepArr.length) return 0;
+    let totalMins = 0;
+    let count = 0;
+    for (let i = 0; i < Math.min(wakeArr.length, sleepArr.length); i++) {
+      let w = parseTime(wakeArr[i]);
+      let s = parseTime(sleepArr[i]);
+      // If wake time is less than sleep time, it means they woke up the next day
+      // Sleep happened before midnight or after midnight natively.
+      // Actually, normally sleep is ~22:00-02:00 and wake is 06:00-10:00.
+      // If s > w, like sleep 23:00, wake 07:00.
+      // Duration = (24*60 - s) + w
+      // If s < w, like sleep 02:00, wake 08:00
+      // Duration = w - s
+      let diff = w - s;
+      if (diff < 0) {
+        diff = (24 * 60 - s) + w;
+      }
+      totalMins += diff;
+      count++;
+    }
+    return count > 0 ? totalMins / count : 0;
+  };
+
+  const formatDurationMs = (mins: number) => {
+    if (mins === 0) return 'N/A';
+    const h = Math.floor(mins / 60);
+    const m = Math.floor(mins % 60);
+    return `${h}h ${m}m`;
+  };
+
   const avgWake = validWakeTimes.length ? formatTime(validWakeTimes.reduce((a, b) => a + parseTime(b), 0) / validWakeTimes.length) : 'N/A';
-  const avgSleep = validSleepTimes.length ? formatTime(validSleepTimes.reduce((a, b) => a + parseTime(b), 0) / validSleepTimes.length) : 'N/A';
+  // Use duration instead of time average
+  const avgSleepDuration = calculateSleepDuration(validWakeTimes, validSleepTimes);
+  const avgSleepDisplay = formatDurationMs(avgSleepDuration);
+
+  // Calculate total nap time today
+  const totalNapMins = naps.reduce((a, b) => a + b, 0);
+  const napDisplay = totalNapMins > 0 ? `${Math.floor(totalNapMins / 60)}h ${totalNapMins % 60}m` : '0m';
 
   return (
     <div className="p-6 md:p-10 max-w-5xl mx-auto space-y-10 pb-20">
@@ -78,6 +129,15 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
           <p className="text-white/70 mt-1">Consistency is key to health. Keep the streak alive!</p>
         </div>
         <div className="flex gap-3">
+          <button
+            onClick={() => {
+              setTempNap('');
+              setShowNapInput(true);
+            }}
+            className="bg-indigo-500/20 text-indigo-100 px-5 py-2.5 font-bold text-[10px] hover:bg-indigo-500/40 transition-all uppercase tracking-widest rounded-full"
+          >
+            Log Nap
+          </button>
           <button
             onClick={() => {
               setTempIntake(waterIntake.toString());
@@ -277,8 +337,8 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
                       </div>
                       <div className="bg-slate-50 p-4 rounded-2xl flex items-center justify-between">
                         <div>
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Sleep Time</p>
-                          <p className="font-bold text-lg text-slate-800">{avgSleep}</p>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Sleep Duration</p>
+                          <p className="font-bold text-lg text-slate-800">{avgSleepDisplay}</p>
                         </div>
                         <div className="h-10 w-24 bg-gradient-to-r from-indigo-200 to-blue-200 rounded-full blur-sm"></div>
                       </div>
@@ -288,6 +348,13 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
                           <p className="font-bold text-lg text-slate-800">{avgWater} {parseFloat(avgWater) === 1 ? 'Glass' : 'Glasses'}</p>
                         </div>
                         <div className="h-10 w-32 bg-gradient-to-r from-cyan-200 to-blue-200 rounded-full blur-sm"></div>
+                      </div>
+                      <div className="bg-slate-50 p-4 rounded-2xl flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Today's Naps</p>
+                          <p className="font-bold text-lg text-slate-800">{napDisplay} <span className="text-xs text-slate-500 font-normal">({naps.length} logs)</span></p>
+                        </div>
+                        <div className="h-10 w-32 bg-gradient-to-r from-purple-200 to-pink-200 rounded-full blur-sm"></div>
                       </div>
                     </>
                   )}
@@ -346,6 +413,46 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
                   className="flex-[2] bg-primary text-white py-4 rounded-2xl font-black shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all"
                 >
                   Update Count
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Nap Input Modal */}
+      {showNapInput && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+          <div className="bg-indigo-950 text-white w-full max-w-sm rounded-[2.5rem] shadow-2xl p-10 border border-white/10 animate-in fade-in zoom-in duration-300">
+            <h3 className="text-2xl font-black tracking-tight mb-2">Log a Nap</h3>
+            <p className="text-sm text-indigo-300 mb-8">How many minutes did you sleep?</p>
+
+            <form onSubmit={handleNapSubmit} className="space-y-6">
+              <div>
+                <label className="text-xs font-black text-indigo-400 uppercase tracking-widest block mb-2">Duration (minutes)</label>
+                <input
+                  autoFocus
+                  type="number"
+                  value={tempNap}
+                  onChange={e => setTempNap(e.target.value)}
+                  className="w-full bg-black/20 border border-white/10 rounded-2xl py-4 px-6 text-2xl font-black focus:ring-2 focus:ring-indigo-500 transition-all text-white outline-none"
+                  placeholder="e.g. 30"
+                />
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowNapInput(false)}
+                  className="flex-1 py-4 font-black text-indigo-300 hover:text-white transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-[2] bg-indigo-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-indigo-500/20 hover:bg-indigo-400 transition-all"
+                >
+                  Save Nap
                 </button>
               </div>
             </form>
