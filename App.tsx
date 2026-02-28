@@ -49,7 +49,7 @@ const App: React.FC = () => {
   const [waterGoal] = useState(8);
   const [wakeUpTime, setWakeUpTime] = useState<string>('');
   const [sleepTime, setSleepTime] = useState<string>('');
-  const [naps, setNaps] = useState<number[]>([]);
+  const [naps, setNaps] = useState<any[]>([]);
   const [habitHistory, setHabitHistory] = useState<any[]>([]);
 
   const todayStr = new Date().toISOString().split('T')[0];

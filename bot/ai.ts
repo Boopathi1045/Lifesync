@@ -18,7 +18,7 @@ const intentSchema: Schema = {
     properties: {
         intent: {
             type: SchemaType.STRING,
-            description: "The identified user intent. Examples: ADD_INCOME, ADD_EXPENSE, ADD_TRANSFER, DELETE_TRANSACTION, LIST_TRANSACTIONS, GET_FINANCE_OVERVIEW, LIST_ACCOUNTS, ADD_ACCOUNT, DELETE_ACCOUNT, MODIFY_BALANCE, ADD_REMINDER, EDIT_REMINDER, DELETE_REMINDER, LIST_REMINDERS, ADD_WATCH_LATER, ADD_PASSWORD, ADD_WATER, SET_WAKEUP, SET_SLEEP, ADD_NAP, UPDATE_HABIT_COUNT, VIEW_HABIT_COUNT, ADD_SUB, LIST_SUBS, DELETE_SUB, ADD_FRIEND, ADD_SPLIT, VIEW_SPLITS, UNKNOWN",
+            description: "The identified user intent. Examples: ADD_INCOME, ADD_EXPENSE, ADD_TRANSFER, DELETE_TRANSACTION, LIST_TRANSACTIONS, GET_FINANCE_OVERVIEW, LIST_ACCOUNTS, ADD_ACCOUNT, DELETE_ACCOUNT, MODIFY_BALANCE, ADD_REMINDER, EDIT_REMINDER, DELETE_REMINDER, LIST_REMINDERS, ADD_WATCH_LATER, ADD_PASSWORD, ADD_WATER, SET_WAKEUP, SET_SLEEP, START_NAP, END_NAP, UPDATE_HABIT_COUNT, VIEW_HABIT_COUNT, ADD_SUB, LIST_SUBS, DELETE_SUB, ADD_FRIEND, ADD_SPLIT, VIEW_SPLITS, UNKNOWN",
             nullable: false,
         },
         actionId: {
@@ -77,7 +77,7 @@ const intentSchema: Schema = {
             properties: {
                 glasses: { type: SchemaType.NUMBER, description: "Number of glasses of water" },
                 time: { type: SchemaType.STRING, description: "Time in HH:MM format (24 hour)" },
-                durationMins: { type: SchemaType.NUMBER, description: "Duration of a nap in minutes" },
+                durationMins: { type: SchemaType.NUMBER, description: "Not used much now, use START_NAP and END_NAP primarily." },
                 count: { type: SchemaType.NUMBER, description: "General count to add/update for a habit" }
             }
         },

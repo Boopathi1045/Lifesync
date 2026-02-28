@@ -17,9 +17,13 @@ interface HabitTrackerProps {
 const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, setWaterIntake, waterGoal, wakeUpTime, setWakeUpTime, sleepTime, setSleepTime, naps, setNaps }) => {
   const [analyticsTab, setAnalyticsTab] = useState<'WEEKLY' | 'MONTHLY' | 'STATS'>('WEEKLY');
   const [showManualInput, setShowManualInput] = useState(false);
-  const [showNapInput, setShowNapInput] = useState(false);
   const [tempIntake, setTempIntake] = useState(waterIntake.toString());
-  const [tempNap, setTempNap] = useState('');
+
+  // Nap tracking state
+  const [napStartTime, setNapStartTime] = useState<number | null>(() => {
+    const saved = localStorage.getItem('LS_NAP_START');
+    return saved ? parseInt(saved) : null;
+  });
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,14 +34,36 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
     }
   };
 
-  const handleNapSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const val = parseInt(tempNap);
-    if (!isNaN(val) && val > 0) {
-      setNaps(prev => [...prev, val]);
-      setTempNap('');
-      setShowNapInput(false);
-    }
+  const handleStartNap = () => {
+    const now = Date.now();
+    localStorage.setItem('LS_NAP_START', now.toString());
+    setNapStartTime(now);
+  };
+
+  const handleEndNap = () => {
+    if (!napStartTime) return;
+    const now = Date.now();
+
+    // Calculate duration in minutes
+    let durationMins = Math.floor((now - napStartTime) / 60000);
+    if (durationMins < 1) durationMins = 1; // Minimum 1 minute for a logged nap
+
+    const startObj = new Date(napStartTime);
+    const endObj = new Date(now);
+
+    const startStr = `${startObj.getHours().toString().padStart(2, '0')}:${startObj.getMinutes().toString().padStart(2, '0')}`;
+    const endStr = `${endObj.getHours().toString().padStart(2, '0')}:${endObj.getMinutes().toString().padStart(2, '0')}`;
+
+    const newNapRecord = {
+      start: startStr,
+      end: endStr,
+      duration: durationMins
+    };
+
+    setNaps(prev => [...(prev || []), newNapRecord]);
+
+    localStorage.removeItem('LS_NAP_START');
+    setNapStartTime(null);
   };
 
   const getPastDateString = (daysAgo: number) => {
@@ -102,6 +128,9 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
   const generalSleep: string[] = [], weekdaySleep: string[] = [], weekendSleep: string[] = [];
   const generalDur: number[] = [], weekdayDur: number[] = [], weekendDur: number[] = [];
 
+  const generalNapStart: string[] = [], weekdayNapStart: string[] = [], weekendNapStart: string[] = [];
+  const generalNapDur: number[] = [], weekdayNapDur: number[] = [], weekendNapDur: number[] = [];
+
   const sortedHistory = [...(habitHistory || [])].sort((a, b) => a.date.localeCompare(b.date));
 
   sortedHistory.forEach((h, index) => {
@@ -139,12 +168,38 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
         else weekdayDur.push(diff);
       }
     }
+
+    // Process Naps for stats
+    if (h.naps && Array.isArray(h.naps)) {
+      h.naps.forEach((nap: any) => {
+        // Handle legacy numbers (just duration)
+        if (typeof nap === 'number') {
+          generalNapDur.push(nap);
+          if (dayOfWeek === 0 || dayOfWeek === 6) weekendNapDur.push(nap);
+          else weekdayNapDur.push(nap);
+        } else if (nap && typeof nap === 'object' && nap.duration) {
+          generalNapDur.push(nap.duration);
+          if (dayOfWeek === 0 || dayOfWeek === 6) weekendNapDur.push(nap.duration);
+          else weekdayNapDur.push(nap.duration);
+
+          if (nap.start) {
+            generalNapStart.push(nap.start);
+            if (dayOfWeek === 0 || dayOfWeek === 6) weekendNapStart.push(nap.start);
+            else weekdayNapStart.push(nap.start);
+          }
+        }
+      });
+    }
   });
 
   const validWaterIntakes = habitHistory?.map(h => h.water_intake).filter(v => v !== null && v !== undefined) || [];
   const avgWater = validWaterIntakes.length ? (validWaterIntakes.reduce((a, b) => a + b, 0) / validWaterIntakes.length).toFixed(1) : '0';
 
-  const totalNapMins = naps.reduce((a, b) => a + b, 0);
+  const totalNapMins = (naps || []).reduce((a, b: any) => {
+    if (typeof b === 'number') return a + b;
+    if (b && typeof b === 'object' && typeof b.duration === 'number') return a + b.duration;
+    return a;
+  }, 0);
   const napDisplay = totalNapMins > 0 ? `${Math.floor(totalNapMins / 60)}h ${totalNapMins % 60}m` : '0m';
 
   return (
@@ -154,16 +209,23 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
           <h2 className="text-4xl font-black pb-1">Water Intake</h2>
           <p className="text-white/70 mt-1">Consistency is key to health. Keep the streak alive!</p>
         </div>
-        <div className="flex gap-3">
-          <button
-            onClick={() => {
-              setTempNap('');
-              setShowNapInput(true);
-            }}
-            className="bg-indigo-500/20 text-indigo-100 px-5 py-2.5 font-bold text-[10px] hover:bg-indigo-500/40 transition-all uppercase tracking-widest rounded-full"
-          >
-            Log Nap
-          </button>
+        <div className="flex gap-3 items-center">
+          {napStartTime ? (
+            <button
+              onClick={handleEndNap}
+              className="bg-indigo-500/20 text-indigo-100 px-5 py-2.5 font-bold text-[10px] hover:bg-indigo-500/40 transition-all uppercase tracking-widest rounded-full flex flex-col items-center"
+            >
+              <span className="text-red-300">End Nap</span>
+              <span className="text-[8px] opacity-70">Started {new Date(napStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            </button>
+          ) : (
+            <button
+              onClick={handleStartNap}
+              className="bg-indigo-500/20 text-indigo-100 px-5 py-2.5 font-bold text-[10px] hover:bg-indigo-500/40 transition-all uppercase tracking-widest rounded-full"
+            >
+              Start Nap
+            </button>
+          )}
           <button
             onClick={() => {
               setTempIntake(waterIntake.toString());
@@ -432,10 +494,56 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
                         <div className="absolute right-0 top-0 h-10 w-32 bg-gradient-to-r from-cyan-200 to-blue-200 rounded-full blur-xl opacity-50 pointer-events-none -mr-10 -mt-2"></div>
                       </div>
 
+                      {/* Nap Duration Stat Block */}
+                      <div className="bg-slate-50 p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden">
+                        <div className="flex justify-between items-center mb-4 z-10">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Nap Duration</p>
+                            <p className="font-bold text-xl text-slate-800">{getAvgDur(generalNapDur)}</p>
+                          </div>
+                          <span className="material-symbols-rounded text-teal-300 opacity-50 text-3xl">snooze</span>
+                        </div>
+                        <div className="flex items-center gap-6 z-10">
+                          <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekdays</p>
+                            <p className="font-bold text-sm text-slate-700">{getAvgDur(weekdayNapDur)}</p>
+                          </div>
+                          <div className="h-4 w-px bg-slate-200"></div>
+                          <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekends</p>
+                            <p className="font-bold text-sm text-slate-700">{getAvgDur(weekendNapDur)}</p>
+                          </div>
+                        </div>
+                        <div className="absolute top-0 right-0 h-24 w-32 bg-gradient-to-r from-teal-200 to-emerald-200 rounded-full blur-2xl opacity-40 -mr-10 -mt-10 pointer-events-none"></div>
+                      </div>
+
+                      {/* Nap Start Time Stat Block */}
+                      <div className="bg-slate-50 p-5 rounded-3xl flex flex-col justify-between relative overflow-hidden">
+                        <div className="flex justify-between items-center mb-4 z-10">
+                          <div>
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Avg Nap Time</p>
+                            <p className="font-bold text-xl text-slate-800">{getAvgClockTime(generalNapStart, false)}</p>
+                          </div>
+                          <span className="material-symbols-rounded text-rose-300 opacity-50 text-3xl">watch_later</span>
+                        </div>
+                        <div className="flex items-center gap-6 z-10">
+                          <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekdays</p>
+                            <p className="font-bold text-sm text-slate-700">{getAvgClockTime(weekdayNapStart, false)}</p>
+                          </div>
+                          <div className="h-4 w-px bg-slate-200"></div>
+                          <div>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase">Weekends</p>
+                            <p className="font-bold text-sm text-slate-700">{getAvgClockTime(weekendNapStart, false)}</p>
+                          </div>
+                        </div>
+                        <div className="absolute top-0 right-0 h-24 w-32 bg-gradient-to-r from-rose-200 to-pink-200 rounded-full blur-2xl opacity-40 -mr-10 -mt-10 pointer-events-none"></div>
+                      </div>
+
                       <div className="bg-slate-50 p-5 rounded-3xl flex items-center justify-between relative overflow-hidden">
                         <div>
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Today's Naps</p>
-                          <p className="font-bold text-lg text-slate-800">{napDisplay} <span className="text-xs text-slate-500 font-normal">({naps.length} logs)</span></p>
+                          <p className="font-bold text-lg text-slate-800">{napDisplay} <span className="text-xs text-slate-500 font-normal">({(naps || []).length} logs)</span></p>
                         </div>
                         <div className="absolute right-0 top-0 h-10 w-32 bg-gradient-to-r from-purple-200 to-pink-200 rounded-full blur-xl opacity-50 pointer-events-none -mr-10 -mt-2"></div>
                       </div>
@@ -503,45 +611,6 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
         </div>
       )}
 
-      {/* Nap Input Modal */}
-      {showNapInput && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
-          <div className="bg-indigo-950 text-white w-full max-w-sm rounded-[2.5rem] shadow-2xl p-10 border border-white/10 animate-in fade-in zoom-in duration-300">
-            <h3 className="text-2xl font-black tracking-tight mb-2">Log a Nap</h3>
-            <p className="text-sm text-indigo-300 mb-8">How many minutes did you sleep?</p>
-
-            <form onSubmit={handleNapSubmit} className="space-y-6">
-              <div>
-                <label className="text-xs font-black text-indigo-400 uppercase tracking-widest block mb-2">Duration (minutes)</label>
-                <input
-                  autoFocus
-                  type="number"
-                  value={tempNap}
-                  onChange={e => setTempNap(e.target.value)}
-                  className="w-full bg-black/20 border border-white/10 rounded-2xl py-4 px-6 text-2xl font-black focus:ring-2 focus:ring-indigo-500 transition-all text-white outline-none"
-                  placeholder="e.g. 30"
-                />
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowNapInput(false)}
-                  className="flex-1 py-4 font-black text-indigo-300 hover:text-white transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-[2] bg-indigo-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-indigo-500/20 hover:bg-indigo-400 transition-all"
-                >
-                  Save Nap
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

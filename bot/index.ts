@@ -59,6 +59,7 @@ interface UserState {
     reminderId?: string;
     actionId?: string;
     payload?: any;
+    napStartTime?: number;
 }
 const userStates: Record<string, UserState> = {};
 const activeMenus: Record<string, number> = {};
@@ -407,21 +408,45 @@ bot.on('message', async (msg) => {
                 await supabase.from('daily_habits').upsert({ date: todayStr, sleep_time: timeStr }, { onConflict: 'date' });
                 bot.sendMessage(chatId, `🌙 Sleep well! Logged sleep time as ${timeStr}.`);
             }
-            else if (intent === 'ADD_NAP' && aiResult.habit?.durationMins) {
-                const mins = aiResult.habit.durationMins;
-                const { todayStr } = getISTDateInfo();
+            else if (intent === 'START_NAP') {
+                if (!userStates[chatId]) userStates[chatId] = { step: '', action: '' };
+                userStates[chatId].napStartTime = Date.now();
+                bot.sendMessage(chatId, `Nap started... sleep well! 💤`);
+            }
+            else if (intent === 'END_NAP') {
+                const napStartTime = userStates[chatId]?.napStartTime;
+                if (!napStartTime) {
+                    bot.sendMessage(chatId, `I don't see an ongoing nap. You can start one by saying "Start nap".`);
+                    return;
+                }
 
-                // Fetch the current record to get existing naps
+                const now = Date.now();
+                let durationMins = Math.floor((now - napStartTime) / 60000);
+                if (durationMins < 1) durationMins = 1;
+
+                const startObj = new Date(napStartTime);
+                const endObj = new Date(now);
+                const startStr = `${startObj.getHours().toString().padStart(2, '0')}:${startObj.getMinutes().toString().padStart(2, '0')}`;
+                const endStr = `${endObj.getHours().toString().padStart(2, '0')}:${endObj.getMinutes().toString().padStart(2, '0')}`;
+
+                const newNapRecord = {
+                    start: startStr,
+                    end: endStr,
+                    duration: durationMins
+                };
+
+                const { todayStr } = getISTDateInfo();
                 const { data: habit } = await supabase.from('daily_habits').select('*').eq('date', todayStr).single();
                 const currentNaps = habit?.naps || [];
+                const newNaps = [...currentNaps, newNapRecord];
 
-                const newNaps = [...currentNaps, mins];
                 await supabase.from('daily_habits').upsert({ date: todayStr, naps: newNaps }, { onConflict: 'date' });
 
-                const totalMins = newNaps.reduce((a: number, b: number) => a + b, 0);
-                const formatDuration = (m: number) => m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
-
-                bot.sendMessage(chatId, `😴 Logged a ${formatDuration(mins)} nap. Total today: ${formatDuration(totalMins)}.`);
+                delete userStates[chatId].napStartTime;
+                bot.sendMessage(chatId, `✅ Ended your nap. Logged ${durationMins} minutes (${startStr} - ${endStr}).`);
+            }
+            else if (intent === 'ADD_NAP') {
+                bot.sendMessage(chatId, `Please use the explicit /menu -> Habit Tracker to start and end your naps, so the exact times are logged accurately.`);
             }
             else if (intent === 'UPDATE_HABIT_COUNT') {
                 const count = aiResult.habit?.count || 1;
@@ -991,11 +1016,24 @@ bot.on('callback_query', async (query) => {
             const waterIntake = habit ? habit.water_intake : 0;
             const progress = '💧'.repeat(waterIntake) + '⚪'.repeat(Math.max(0, 8 - waterIntake));
 
+            const totalNapMins = (habit?.naps || []).reduce((a: number, b: any) => {
+                if (typeof b === 'number') return a + b;
+                if (b && typeof b === 'object' && typeof b.duration === 'number') return a + b.duration;
+                return a;
+            }, 0);
+            const formatDuration = (m: number) => m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
+            const napDisplay = totalNapMins > 0 ? formatDuration(totalNapMins) : '0m';
+
+            const currentState = userStates[chatId] || { step: '' };
+            const isNapOngoing = !!currentState.napStartTime;
+
             const habitMsg = `
 💧 *Habit Tracker (Today)*
 
 *Water Intake:* ${waterIntake} / 8 glasses
 ${progress}
+
+😴 *Naps Today:* ${napDisplay}
             `;
 
             await bot.editMessageText(habitMsg, {
@@ -1005,9 +1043,67 @@ ${progress}
                 reply_markup: {
                     inline_keyboard: [
                         [{ text: '➕ Add 1 Water', callback_data: 'action_add_water' }, { text: '➖ Skip', callback_data: 'action_skip_water' }],
+                        isNapOngoing
+                            ? [{ text: '🛑 End Nap', callback_data: 'action_end_nap' }]
+                            : [{ text: '😴 Start Nap', callback_data: 'action_start_nap' }],
                         [{ text: '🔙 Back to Main Menu', callback_data: 'main_menu' }]
                     ]
                 }
+            });
+        } else if (data === 'action_start_nap') {
+            if (!userStates[chatId]) userStates[chatId] = { step: '', action: '' };
+            userStates[chatId].napStartTime = Date.now();
+
+            bot.answerCallbackQuery(query.id, { text: 'Nap started... sleep well! 💤', show_alert: false }).catch(console.error);
+
+            // Re-render menu to show End Nap
+            bot.editMessageText(`Nap started at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}...`, {
+                chat_id: chatId,
+                message_id: query.message.message_id,
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: '🛑 End Nap', callback_data: 'action_end_nap' }],
+                        [{ text: '🔙 Back to Main Menu', callback_data: 'main_menu' }]
+                    ]
+                }
+            });
+        } else if (data === 'action_end_nap') {
+            const napStartTime = userStates[chatId]?.napStartTime;
+            if (!napStartTime) {
+                bot.answerCallbackQuery(query.id, { text: "No nap was running.", show_alert: true });
+                return;
+            }
+
+            const now = Date.now();
+            let durationMins = Math.floor((now - napStartTime) / 60000);
+            if (durationMins < 1) durationMins = 1;
+
+            const startObj = new Date(napStartTime);
+            const endObj = new Date(now);
+            const startStr = `${startObj.getHours().toString().padStart(2, '0')}:${startObj.getMinutes().toString().padStart(2, '0')}`;
+            const endStr = `${endObj.getHours().toString().padStart(2, '0')}:${endObj.getMinutes().toString().padStart(2, '0')}`;
+
+            const newNapRecord = {
+                start: startStr,
+                end: endStr,
+                duration: durationMins
+            };
+
+            const { todayStr } = getISTDateInfo();
+            const { data: habit } = await supabase.from('daily_habits').select('*').eq('date', todayStr).single();
+            const currentNaps = habit?.naps || [];
+            const newNaps = [...currentNaps, newNapRecord];
+
+            await supabase.from('daily_habits').upsert({ date: todayStr, naps: newNaps }, { onConflict: 'date' });
+
+            delete userStates[chatId].napStartTime;
+
+            bot.answerCallbackQuery(query.id, { text: `Logged ${durationMins}m nap! 😴`, show_alert: false }).catch(console.error);
+
+            bot.editMessageText(`✅ Logged a ${durationMins} minute nap (${startStr} - ${endStr}).`, {
+                chat_id: chatId,
+                message_id: query.message.message_id,
+                reply_markup: { inline_keyboard: [[{ text: '🔙 Check Habits', callback_data: 'menu_habits' }]] }
             });
         } else if (data === 'action_add_water' || data === 'action_skip_water') {
             const { todayStr } = getISTDateInfo();
