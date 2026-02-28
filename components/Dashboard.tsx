@@ -64,6 +64,15 @@ const Dashboard: React.FC<DashboardProps> = ({
         </div>
       </header>
 
+      {/* Hero Welcome Banner */}
+      <div className="w-full h-72 md:h-96 rounded-[2.5rem] overflow-hidden relative shadow-sm border border-white/5">
+        <img src="/hero.jpg" alt="AI Workspace Banner" className="w-full h-full object-cover object-[50%_25%]" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0b1121] via-[#0b1121]/40 to-transparent flex flex-col justify-end p-8 md:p-10 pointer-events-none">
+          <h3 className="text-2xl md:text-4xl font-black text-white mb-2 shadow-sm">Your AI Copilot is Ready</h3>
+          <p className="text-white/80 font-bold text-sm md:text-base max-w-xl">Supercharge your productivity, track your habits, and sync your life seamlessly with your new intelligent assistant.</p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
         {/* Upcoming Reminders Section */}
@@ -175,16 +184,16 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
-          <div className="space-y-3 mt-auto relative z-10">
-            <div className={`p-4 rounded-2xl border ${totalReceivable > 0 ? 'bg-[#c1e5ed] border-transparent' : 'bg-slate-50 border-slate-100'}`}>
+          <div className="grid grid-cols-2 gap-3 mt-auto relative z-10 pt-4">
+            <div className={`p-4 rounded-2xl border flex flex-col justify-center ${totalReceivable > 0 ? 'bg-[#c1e5ed] border-transparent' : 'bg-slate-50 border-slate-100'}`}>
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Receivables</p>
-              <p className="text-sm font-bold truncate">
+              <p className="text-sm font-bold leading-tight">
                 {totalReceivable > 0 ? `Receive ₹${totalReceivable.toFixed(0)}` : "No pending returns"}
               </p>
             </div>
-            <div className={`p-4 rounded-2xl border ${totalPayable > 0 ? 'bg-[#fce1cd] border-transparent' : 'bg-slate-50 border-slate-100'}`}>
+            <div className={`p-4 rounded-2xl border flex flex-col justify-center ${totalPayable > 0 ? 'bg-[#fce1cd] border-transparent' : 'bg-slate-50 border-slate-100'}`}>
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Payables</p>
-              <p className="text-sm font-bold truncate">
+              <p className="text-sm font-bold leading-tight">
                 {totalPayable > 0 ? `You owe ₹${totalPayable.toFixed(0)}` : "All debts cleared"}
               </p>
             </div>

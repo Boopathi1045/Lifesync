@@ -21,8 +21,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView }) => {
   return (
     <aside className="fixed bottom-0 inset-x-0 h-[72px] md:relative md:h-screen w-full md:w-20 lg:w-64 flex flex-row md:flex-col shrink-0 z-[100] bg-slate-900/95 backdrop-blur-md md:bg-transparent text-white pt-0 md:pt-4 border-t border-white/10 md:border-none">
       <div className="hidden md:flex p-6 items-center gap-3 mb-6">
-        <div className="size-10 bg-white rounded-full flex items-center justify-center text-slate-800 font-bold shrink-0">
-          <span className="text-xs">LS</span>
+        <div className="size-10 bg-slate-800 rounded-full flex items-center justify-center text-slate-800 font-bold shrink-0 overflow-hidden">
+          <img src="/logo.png" alt="LifeSync" className="w-full h-full object-cover" />
         </div>
         <div>
           <h1 className="hidden lg:block text-xl font-bold text-white leading-tight">LifeSync</h1>
