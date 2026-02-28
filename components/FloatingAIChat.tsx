@@ -21,7 +21,7 @@ const FloatingAIChat: React.FC = () => {
             scrollToBottom();
             // Initial greeting if empty
             if (messages.length === 0) {
-                setMessages([{ role: 'model', text: "Hi! I'm your LifeSync AI Assistant. How can I help you today? Try saying 'Add 500rs for lunch' or 'Remind me to call John tomorrow'." }]);
+                setMessages([{ role: 'model', text: "Hi! I'm your LifeSync AI Assistant. How can I help you today?" }]);
             }
         }
     }, [messages, isOpen]);
