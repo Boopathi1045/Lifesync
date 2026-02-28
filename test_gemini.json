@@ -1,0 +1,31 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Hello! How can I help you today?",
+            "thoughtSignature": "EqACCp0CAb4+9vtDQB9XhaofxwrgAuwZsJQ2WnzciCFmKa4io1OrykscnkTlZCgLYK/zDJRfRRTqmxA+DisgQuxYwYKo2TpT/FGMPCyzJopvgNSFTy9y+lUGCeM/whqOLqZfGNFLzfeSa4ZfjSnf30FdYRsFyxzrWbmhFHyBeaJriyhD4C9IF4ukMDay0ADHtywVXglfC0z59bAR63aM6kV7WRaFlMqOoqrMHLK6oiKSkrDxf70oR3VIIS3fJcTbg3pEQFxm9OI++wWTLjisgGlGhMoVs4+tlpHd1VHWtxvMvbLAtCvuN6Gv8V1QIt28v+t4LSlCbh0+ua/MAHs08fEg9EPFqV6xbYzvqOlP6nLsUOLPETZoZoDtsF/ZAiMB24+7"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 1,
+    "candidatesTokenCount": 9,
+    "totalTokenCount": 76,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 1
+      }
+    ],
+    "thoughtsTokenCount": 66
+  },
+  "modelVersion": "gemini-3-flash-preview",
+  "responseId": "WUajaZKCFqus4-EP4f2H-AE"
+}

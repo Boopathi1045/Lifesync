@@ -170,7 +170,7 @@ export async function parseIntentFromText(text: string, history: ChatTurn[] = []
     if (apiKey) {
         try {
             console.log("Calling Gemini directly via REST API from web...");
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
 
             const contents = history.map(turn => ({
                 role: turn.role,
