@@ -4,7 +4,7 @@ import axios from 'axios';
 // Accessing the Vite env variable explicitly based on config mapping
 const apiKey = process.env.GEMINI_API_KEY || '';
 // Fallback logic could be implemented if OpenRouter is provided.
-const openRouterApiKey = '';
+const openRouterApiKey = process.env.OPENROUTER_API_KEY || '';
 
 let genAI: GoogleGenerativeAI | null = null;
 if (apiKey) {
@@ -122,34 +122,82 @@ export type ChatTurn = {
     parts: { text: string }[];
 };
 
-export async function parseIntentFromText(text: string, history: ChatTurn[] = []) {
-    if (!genAI) {
+async function callOpenRouterFallback(prompt: string, history: ChatTurn[] = []): Promise<any> {
+    if (!openRouterApiKey) {
         return {
             intent: "UNKNOWN",
-            replyText: "Gemini API key is not configured in the web environment."
+            replyText: "Gemini API failed and OpenRouter fallback key is missing."
         };
     }
 
+    const messages: any[] = [
+        {
+            role: "system",
+            content: `${systemInstruction}\n\nIMPORTANT: You MUST respond ONLY with a valid JSON object matching the requested schema. No other text.`
+        }
+    ];
+
+    for (const turn of history) {
+        messages.push({
+            role: turn.role === "model" ? "assistant" : "user",
+            content: turn.parts[0]?.text || ""
+        });
+    }
+
+    messages.push({
+        role: "user",
+        content: prompt
+    });
+
+    const payload = {
+        model: "google/gemini-1.5-flash",
+        messages: messages,
+        response_format: { type: "json_object" }
+    };
+
     try {
-        const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash", // We recommend 1.5-flash as the standard fast option
-            generationConfig: {
-                responseMimeType: "application/json",
-                responseSchema: intentSchema,
-            },
-            systemInstruction: systemInstruction,
+        console.log("Calling OpenRouter fallback from web...");
+        const response = await axios.post('https://openrouter.ai/api/v1/chat/completions', payload, {
+            headers: {
+                'Authorization': `Bearer ${openRouterApiKey}`,
+                'HTTP-Referer': 'https://lifesync.app', // Required by OpenRouter
+                'X-Title': 'LifeSync Web', // Required by OpenRouter
+                'Content-Type': 'application/json'
+            }
         });
 
-        const contents: any[] = [...history, { role: "user", parts: [{ text }] }];
-
-        const result = await model.generateContent({ contents });
-        const responseText = result.response.text();
+        const responseText = response.data.choices[0].message.content;
         return JSON.parse(responseText);
     } catch (error: any) {
-        console.error("Gemini API Error (Text):", error.message);
-        return {
-            intent: "UNKNOWN",
-            replyText: "Sorry, I am currently facing network issues connecting to Gemini."
-        };
+        console.error("OpenRouter API Error:", error?.response?.data || error.message);
+        return { intent: "UNKNOWN", replyText: "Sorry, I am currently facing network issues on both my primary and backup servers." };
+    }
+}
+
+export async function parseIntentFromText(text: string, history: ChatTurn[] = []) {
+    if (genAI) {
+        try {
+            const model = genAI.getGenerativeModel({
+                model: "gemini-1.5-flash", // We recommend 1.5-flash as the standard fast option
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: intentSchema,
+                },
+                systemInstruction: systemInstruction,
+            });
+
+            const contents: any[] = [...history, { role: "user", parts: [{ text }] }];
+
+            const result = await model.generateContent({ contents });
+            const responseText = result.response.text();
+            return JSON.parse(responseText);
+        } catch (error: any) {
+            console.warn("Gemini API Error (Text):", error.message);
+            console.log("Falling back to OpenRouter...");
+            return await callOpenRouterFallback(text, history);
+        }
+    } else {
+        console.log("Gemini API key not found in web env. Proceeding with OpenRouter directly.");
+        return await callOpenRouterFallback(text, history);
     }
 }
