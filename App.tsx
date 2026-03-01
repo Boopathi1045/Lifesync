@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Reminder, PasswordEntry, MediaItem, Account, Friend, Transaction, ReminderCategory, AccountType, PurposeCategory, FocusSettings, Subscription } from './types';
+import { View, Reminder, PasswordEntry, MediaItem, Account, Friend, Transaction, ReminderCategory, AccountType, PurposeCategory, FocusSettings, Subscription, Note } from './types';
 import { supabase, TABLES } from './lib/supabase';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -9,6 +9,7 @@ import HabitTracker from './components/HabitTracker';
 import PasswordManager from './components/PasswordManager';
 import WatchLater from './components/WatchLater';
 import FinanceManager from './components/FinanceManager';
+import NotesManager from './components/NotesManager';
 import Settings from './components/Settings';
 import FloatingAIChat from './components/FloatingAIChat';
 
@@ -46,6 +47,7 @@ const App: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [purposes, setPurposes] = useState<PurposeCategory[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
   const [waterIntake, setWaterIntake] = useState(0);
   const [waterGoal] = useState(8);
   const [wakeUpTime, setWakeUpTime] = useState<string>('');
@@ -136,6 +138,7 @@ const App: React.FC = () => {
           { data: transactionsData },
           { data: subscriptionsData },
           { data: purposesData },
+          { data: notesData },
           { data: habitsData }
         ] = await Promise.all([
           supabase.from(TABLES.REMINDERS).select('*').order('dueDate', { ascending: true }),
@@ -146,6 +149,7 @@ const App: React.FC = () => {
           supabase.from(TABLES.TRANSACTIONS).select('*').order('date', { ascending: false }),
           supabase.from(TABLES.SUBSCRIPTIONS).select('*'),
           supabase.from(TABLES.PURPOSES).select('*'),
+          supabase.from(TABLES.NOTES).select('*').order('updatedAt', { ascending: false }),
           supabase.from(TABLES.DAILY_HABITS).select('*').order('date', { ascending: true })
         ]);
 
@@ -157,6 +161,7 @@ const App: React.FC = () => {
         if (transactionsData) setTransactions(transactionsData);
         if (subscriptionsData) setSubscriptions(subscriptionsData);
         if (purposesData) setPurposes(purposesData);
+        if (notesData) setNotes(notesData);
         if (habitsData) {
           setHabitHistory(habitsData);
           const todayHabit = habitsData.find((h: any) => h.date === todayStr);
@@ -188,6 +193,7 @@ const App: React.FC = () => {
       { name: TABLES.TRANSACTIONS, setter: setTransactions, sortKey: 'date' },
       { name: TABLES.SUBSCRIPTIONS, setter: setSubscriptions },
       { name: TABLES.PURPOSES, setter: setPurposes },
+      { name: TABLES.NOTES, setter: setNotes, sortKey: 'updatedAt' },
       { name: TABLES.DAILY_HABITS, setter: setHabitHistory, sortKey: 'date' }
     ];
 
@@ -285,6 +291,8 @@ const App: React.FC = () => {
           removeFromDB={removeFromDB}
           saveToDB={saveToDB}
         />;
+      case View.NOTES:
+        return <NotesManager notes={notes} setNotes={setNotes} removeFromDB={removeFromDB} saveToDB={saveToDB} />;
       case View.SETTINGS:
         return <Settings
           isFocusMode={isFocusMode} setIsFocusMode={setIsFocusMode}

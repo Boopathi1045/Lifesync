@@ -13,6 +13,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView }) => {
     { id: View.DASHBOARD, label: 'Overview', icon: ICONS.Dashboard },
     { id: View.REMINDERS, label: 'Reminders', icon: ICONS.Reminders },
     { id: View.HABITS, label: 'Habit Tracker', icon: ICONS.Habits },
+    { id: View.NOTES, label: 'Notes', icon: ICONS.Notes },
     { id: View.PASSWORDS, label: 'Vault', icon: ICONS.Passwords },
     { id: View.WATCH_LATER, label: 'Watch Later', icon: ICONS.WatchLater },
     { id: View.FINANCE, label: 'Finance', icon: ICONS.Finance },

@@ -6,6 +6,7 @@ export enum View {
   PASSWORDS = 'PASSWORDS',
   WATCH_LATER = 'WATCH_LATER',
   FINANCE = 'FINANCE',
+  NOTES = 'NOTES',
   SETTINGS = 'SETTINGS'
 }
 
@@ -21,6 +22,26 @@ export interface Reminder {
   dueDate: string;
   category: ReminderCategory;
   isDone: boolean;
+}
+
+export type NoteType = 'TEXT' | 'CHECKLIST';
+
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  isCompleted: boolean;
+}
+
+export interface Note {
+  id: string;
+  title: string;
+  content: string; // Used for text notes
+  items?: ChecklistItem[]; // Used for checklist notes
+  type: NoteType;
+  color: string;
+  isPinned: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PasswordHistoryItem {

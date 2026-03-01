@@ -17,8 +17,8 @@ const getSupabaseConfig = () => {
 const { url: supabaseUrl, key: supabaseAnonKey } = getSupabaseConfig();
 
 // Initialize client if keys are present
-export const supabase = supabaseUrl && supabaseAnonKey 
-  ? createClient(supabaseUrl, supabaseAnonKey) 
+export const supabase = supabaseUrl && supabaseAnonKey
+  ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
 export const TABLES = {
@@ -30,7 +30,8 @@ export const TABLES = {
   TRANSACTIONS: 'transactions',
   SUBSCRIPTIONS: 'subscriptions',
   PURPOSES: 'purposes',
-  DAILY_HABITS: 'daily_habits'
+  DAILY_HABITS: 'daily_habits',
+  NOTES: 'notes'
 };
 
 /**
@@ -44,7 +45,8 @@ export const TABLES = {
  * CREATE TABLE media_items (id TEXT PRIMARY KEY, title TEXT, thumbnail TEXT, link TEXT, "isWatched" BOOLEAN, "dateAdded" TIMESTAMP WITH TIME ZONE);
  * CREATE TABLE subscriptions (id TEXT PRIMARY KEY, name TEXT, amount NUMERIC, frequency TEXT, "accountId" TEXT, "startDate" DATE, "endDate" TEXT, "isActive" BOOLEAN);
  * CREATE TABLE purposes (id TEXT PRIMARY KEY, name TEXT, "isSystem" BOOLEAN);
- * CREATE TABLE daily_habits (date DATE PRIMARY KEY, water_intake INTEGER DEFAULT 0);
+ * CREATE TABLE daily_habits (date DATE PRIMARY KEY, water_intake INTEGER DEFAULT 0, wake_up_time TEXT, sleep_time TEXT, naps JSONB);
+ * CREATE TABLE notes (id TEXT PRIMARY KEY, title TEXT, content TEXT, items JSONB, type TEXT, color TEXT, "isPinned" BOOLEAN, "createdAt" TIMESTAMP WITH TIME ZONE, "updatedAt" TIMESTAMP WITH TIME ZONE);
  * 
  * IMPORTANT: If you get RLS errors (42501), run this in Supabase SQL Editor:
  * ALTER TABLE reminders DISABLE ROW LEVEL SECURITY;
@@ -56,4 +58,5 @@ export const TABLES = {
  * ALTER TABLE subscriptions DISABLE ROW LEVEL SECURITY;
  * ALTER TABLE purposes DISABLE ROW LEVEL SECURITY;
  * ALTER TABLE daily_habits DISABLE ROW LEVEL SECURITY;
+ * ALTER TABLE notes DISABLE ROW LEVEL SECURITY;
  */

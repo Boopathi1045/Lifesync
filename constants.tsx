@@ -7,5 +7,6 @@ export const ICONS = {
   Passwords: () => <span className="material-symbols-rounded block">lock</span>,
   WatchLater: () => <span className="material-symbols-rounded block">smart_display</span>,
   Finance: () => <span className="material-symbols-rounded block">account_balance_wallet</span>,
+  Notes: () => <span className="material-symbols-rounded block">sticky_note_2</span>,
   Settings: () => <span className="material-symbols-rounded block">settings</span>
 };
