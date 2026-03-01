@@ -61,7 +61,7 @@ const NotesManager: React.FC<NotesManagerProps> = ({ notes, setNotes, removeFrom
         }
 
         const noteToSave: Note = {
-            id: editingNote ? editingNote.id : Math.random().toString(36).substr(2, 9),
+            id: editingNote ? editingNote.id : crypto.randomUUID(),
             title: title.trim(),
             content: type === 'TEXT' ? content.trim() : '',
             items: type === 'CHECKLIST' ? checklistItems : [],
@@ -141,7 +141,7 @@ const NotesManager: React.FC<NotesManagerProps> = ({ notes, setNotes, removeFrom
 
         if (!newItemText.trim()) return;
 
-        setChecklistItems([...checklistItems, { id: Math.random().toString(36).substr(2, 9), text: newItemText.trim(), isCompleted: false }]);
+        setChecklistItems([...checklistItems, { id: crypto.randomUUID(), text: newItemText.trim(), isCompleted: false }]);
         setNewItemText('');
     };
 
