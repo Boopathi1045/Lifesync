@@ -2,6 +2,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Reminder, PasswordEntry, MediaItem, Account, Friend, Transaction, ReminderCategory, AccountType, PurposeCategory, FocusSettings, Subscription, Note } from './types';
 import { supabase, TABLES } from './lib/supabase';
+import { getISTDateInfo } from './lib/dateUtils';
+
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import Reminders from './components/Reminders';
@@ -55,7 +57,7 @@ const App: React.FC = () => {
   const [naps, setNaps] = useState<any[]>([]);
   const [habitHistory, setHabitHistory] = useState<any[]>([]);
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const { todayStr } = getISTDateInfo();
 
   useEffect(() => {
     const theme = THEMES[currentTheme];

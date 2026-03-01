@@ -1,5 +1,6 @@
 
 import React, { useState } from 'react';
+import { getISTDateInfo } from '../lib/dateUtils';
 
 interface HabitTrackerProps {
   habitHistory: any[];
@@ -76,7 +77,7 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
   const getPastDateString = (daysAgo: number) => {
     const d = new Date();
     d.setDate(d.getDate() - daysAgo);
-    return d.toISOString().split('T')[0];
+    return getISTDateInfo(d).todayStr;
   };
 
   const getDayName = (dateStr: string) => {
@@ -164,7 +165,7 @@ const HabitTracker: React.FC<HabitTrackerProps> = ({ habitHistory, waterIntake, 
       const expectedYesterday = new Date(d);
       expectedYesterday.setDate(d.getDate() - 1);
 
-      if (prevDate.toISOString().split('T')[0] === expectedYesterday.toISOString().split('T')[0] && prev.sleep_time) {
+      if (getISTDateInfo(prevDate).todayStr === getISTDateInfo(expectedYesterday).todayStr && prev.sleep_time) {
         let w = parseTime(h.wake_up_time);
         let s = parseTime(prev.sleep_time);
         let diff = w - s;

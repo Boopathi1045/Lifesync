@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { Reminder, ReminderCategory } from '../types';
+import { getISTDateInfo } from '../lib/dateUtils';
 import { TABLES } from '../lib/supabase';
 
 interface RemindersProps {
@@ -30,7 +31,7 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, setReminders, snoozePr
   const [form, setForm] = useState<ReminderForm>({
     title: '',
     description: '',
-    date: new Date().toISOString().split('T')[0],
+    date: getISTDateInfo().todayStr,
     time: '09:00',
     category: ReminderCategory.GENERAL
   });
@@ -157,7 +158,7 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, setReminders, snoozePr
             {showArchived ? 'Active' : 'Archived'}
           </button>
           <button
-            onClick={() => { setForm({ title: '', description: '', date: new Date().toISOString().split('T')[0], time: '09:00', category: ReminderCategory.GENERAL }); setShowModal('ADD'); }}
+            onClick={() => { setForm({ title: '', description: '', date: getISTDateInfo().todayStr, time: '09:00', category: ReminderCategory.GENERAL }); setShowModal('ADD'); }}
             className="px-4 py-2 sm:px-5 sm:py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-500 text-white hover:bg-emerald-600 shadow-sm transition-all flex items-center gap-1"
           >
             <span className="material-symbols-rounded text-[14px]">add</span>

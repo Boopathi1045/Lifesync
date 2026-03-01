@@ -246,7 +246,7 @@ export async function executeIntent(aiResult: any, inputText: string): Promise<E
                 }
             }
 
-            const newItem = { id: crypto.randomUUID(), title: extractedTitle, link: url, isWatched: false, dateAdded: istDate.toISOString() };
+            const newItem = { id: crypto.randomUUID(), title: extractedTitle, link: url, isWatched: false, dateAdded: new Date().toISOString() };
             await supabase.from('media_items').insert([newItem]);
 
             return { success: true, message: `✅ Saved to Watch Later: *${extractedTitle}*` };

@@ -1,5 +1,6 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { getISTDateInfo } from '../lib/dateUtils';
 import { Account, Friend, AccountType, Transaction, PurposeCategory, Subscription, SubscriptionFrequency, TransactionType } from '../types';
 import { TABLES } from '../lib/supabase';
 
@@ -32,11 +33,11 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
 
   // Form States
   const [accForm, setAccForm] = useState({ id: '', name: '', type: AccountType.BANK, balance: 0 });
-  const [trfForm, setTrfForm] = useState({ amount: 0, fromId: '', toId: '', date: new Date().toISOString().split('T')[0] });
+  const [trfForm, setTrfForm] = useState({ amount: 0, fromId: '', toId: '', date: getISTDateInfo().todayStr });
   const [subForm, setSubForm] = useState({ name: '', amount: 0, frequency: SubscriptionFrequency.MONTHLY, accountId: '', endDate: '2026' });
   const [splitForm, setSplitForm] = useState({ amount: 0, purposeId: '', payerType: 'ME' as 'ME' | 'FRIEND', accountId: '', payerFriendId: '' });
-  const [expForm, setExpForm] = useState({ amount: 0, purposeId: '', accountId: '', date: new Date().toISOString().split('T')[0], notes: '' });
-  const [incForm, setIncForm] = useState({ amount: 0, accountId: '', notes: '', date: new Date().toISOString().split('T')[0] });
+  const [expForm, setExpForm] = useState({ amount: 0, purposeId: '', accountId: '', date: getISTDateInfo().todayStr, notes: '' });
+  const [incForm, setIncForm] = useState({ amount: 0, accountId: '', notes: '', date: getISTDateInfo().todayStr });
   const [purposeInput, setPurposeInput] = useState({ id: '', name: '' });
 
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
@@ -106,7 +107,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
         id: Math.random().toString(36).substr(2, 9),
         amount: absAmount,
         purpose: `Manual Balance Adjustment for ${accForm.name}`,
-        date: new Date().toISOString().split('T')[0],
+        date: getISTDateInfo().todayStr,
         type: type,
         accountId: accForm.id,
         payerName: 'System'
@@ -173,7 +174,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
       await saveToDB(TABLES.ACCOUNTS, updatedAccount);
       await saveToDB(TABLES.TRANSACTIONS, newTx);
       setModal(null);
-      setIncForm({ amount: 0, accountId: '', notes: '', date: new Date().toISOString().split('T')[0] });
+      setIncForm({ amount: 0, accountId: '', notes: '', date: getISTDateInfo().todayStr });
     } catch (err) {
       setAccounts(previousAccounts);
       setTransactions(previousTransactions);
@@ -217,7 +218,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
       await saveToDB(TABLES.ACCOUNTS, updatedAccount);
       await saveToDB(TABLES.TRANSACTIONS, newTx);
       setModal(null);
-      setExpForm({ amount: 0, purposeId: '', accountId: '', date: new Date().toISOString().split('T')[0], notes: '' });
+      setExpForm({ amount: 0, purposeId: '', accountId: '', date: getISTDateInfo().todayStr, notes: '' });
     } catch (err) {
       setAccounts(previousAccounts);
       setTransactions(previousTransactions);
@@ -263,7 +264,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
       await saveToDB(TABLES.ACCOUNTS, [updatedFrom, updatedTo]);
       await saveToDB(TABLES.TRANSACTIONS, newTx);
       setModal(null);
-      setTrfForm({ amount: 0, fromId: '', toId: '', date: new Date().toISOString().split('T')[0] });
+      setTrfForm({ amount: 0, fromId: '', toId: '', date: getISTDateInfo().todayStr });
     } catch (err) {
       setAccounts(previousAccounts);
       setTransactions(previousTransactions);
@@ -287,14 +288,14 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
     const newSub: Subscription = {
       id: Math.random().toString(36).substr(2, 9),
       ...subForm,
-      startDate: new Date().toISOString().split('T')[0],
+      startDate: getISTDateInfo().todayStr,
       isActive: true
     };
     const newTx: Transaction = {
       id: Math.random().toString(36).substr(2, 9),
       amount: subForm.amount,
       purpose: `Subscription: ${subForm.name}`,
-      date: new Date().toISOString().split('T')[0],
+      date: getISTDateInfo().todayStr,
       type: 'SUBSCRIPTION',
       accountId: subForm.accountId,
       payerName: 'Me'
@@ -363,7 +364,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
       id: Math.random().toString(36).substr(2, 9),
       amount: splitForm.amount,
       purpose: `Split: ${purposeName} (${totalMembers} members, ₹${share.toFixed(2)} each)`,
-      date: new Date().toISOString().split('T')[0],
+      date: getISTDateInfo().todayStr,
       type: 'SPLIT',
       accountId: splitForm.accountId,
       payerName,
@@ -406,7 +407,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
       id: Math.random().toString(36).substr(2, 9),
       amount,
       purpose: `Settlement: ${friend.name}`,
-      date: new Date().toISOString().split('T')[0],
+      date: getISTDateInfo().todayStr,
       type: 'SETTLEMENT',
       accountId: settleAccountId,
       payerName: friend.netBalance > 0 ? friend.name : 'Me'

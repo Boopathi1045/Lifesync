@@ -66,8 +66,8 @@ const activeMenus: Record<string, number> = {};
 const activeMenuTimeouts: Record<string, NodeJS.Timeout> = {};
 
 // Helper to get consistent IST current date/time
-function getISTDateInfo() {
-    const now = new Date();
+function getISTDateInfo(input?: Date | number | string) {
+    const now = input ? new Date(input) : new Date();
     // Get the localized date/time string in IST
     const istString = now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
     const istDate = new Date(istString);
@@ -383,7 +383,7 @@ bot.on('message', async (msg) => {
                     }
                 }
 
-                const newItem = { id: crypto.randomUUID(), title: extractedTitle, link: url, isWatched: false, dateAdded: istDate.toISOString() };
+                const newItem = { id: crypto.randomUUID(), title: extractedTitle, link: url, isWatched: false, dateAdded: new Date().toISOString() };
                 await supabase.from('media_items').insert([newItem]);
                 bot.sendMessage(chatId, `✅ Saved to Watch Later: *${extractedTitle}*`, { parse_mode: 'Markdown' });
             }
@@ -736,7 +736,7 @@ bot.on('message', async (msg) => {
             title: 'Saved from Telegram',
             link: url,
             isWatched: false,
-            dateAdded: istDate.toISOString()
+            dateAdded: new Date().toISOString()
         };
 
         try {
@@ -1074,7 +1074,7 @@ ${progress}
             bot.answerCallbackQuery(query.id, { text: 'Nap started... sleep well! 💤', show_alert: false }).catch(console.error);
 
             // Re-render menu to show End Nap
-            bot.editMessageText(`Nap started at ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}...`, {
+            bot.editMessageText(`Nap started at ${getISTDateInfo().hour.toString().padStart(2, '0')}:${getISTDateInfo().minute.toString().padStart(2, '0')}...`, {
                 chat_id: chatId,
                 message_id: query.message.message_id,
                 reply_markup: {
@@ -1095,10 +1095,10 @@ ${progress}
             let durationMins = Math.floor((now - napStartTime) / 60000);
             if (durationMins < 1) durationMins = 1;
 
-            const startObj = new Date(napStartTime);
-            const endObj = new Date(now);
-            const startStr = `${startObj.getHours().toString().padStart(2, '0')}:${startObj.getMinutes().toString().padStart(2, '0')}`;
-            const endStr = `${endObj.getHours().toString().padStart(2, '0')}:${endObj.getMinutes().toString().padStart(2, '0')}`;
+            const pStart = getISTDateInfo(napStartTime);
+            const pEnd = getISTDateInfo(now);
+            const startStr = `${pStart.hour.toString().padStart(2, '0')}:${pStart.minute.toString().padStart(2, '0')}`;
+            const endStr = `${pEnd.hour.toString().padStart(2, '0')}:${pEnd.minute.toString().padStart(2, '0')}`;
 
             const newNapRecord = {
                 start: startStr,
@@ -1518,7 +1518,7 @@ ${progress}
                     id: crypto.randomUUID(),
                     amount: state.amount,
                     purpose: 'Internal Transfer',
-                    date: new Date().toISOString().split('T')[0],
+                    date: getISTDateInfo().todayStr,
                     type: 'TRANSFER',
                     accountId: state.accountId,
                     toAccountId: state.toAccountId,
