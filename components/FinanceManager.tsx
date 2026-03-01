@@ -44,6 +44,7 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
   const [pendingTargetId, setPendingTargetId] = useState<string | null>(null);
   const [settleFriendId, setSettleFriendId] = useState<string | null>(null);
   const [settleAccountId, setSettleAccountId] = useState<string>('');
+  const [filterAccountId, setFilterAccountId] = useState<string>('ALL');
 
   const netWorth = accounts.reduce((acc, curr) => acc + Number(curr.balance), 0);
   const totalReceivable = friends.filter(f => f.netBalance > 0).reduce((acc, curr) => acc + curr.netBalance, 0);
@@ -564,28 +565,28 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
         {activeTab === 'OVERVIEW' && (
           <div className="space-y-8 animate-in fade-in duration-500">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="bg-[#c1e5ed] text-slate-900 p-8 rounded-[2.5rem] shadow-sm flex flex-col justify-between min-h-[240px]">
+              <div className="bg-[#c1e5ed] text-slate-900 p-6 sm:p-8 rounded-[2.5rem] shadow-sm flex flex-col justify-between min-h-[240px]">
                 <p className="text-[10px] font-black uppercase tracking-widest text-[#5f7f8a] mb-2">Total Net Worth</p>
-                <h3 className="text-6xl font-black tracking-tighter">₹{netWorth.toLocaleString()}</h3>
+                <h3 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter break-all sm:break-normal">₹{netWorth.toLocaleString()}</h3>
                 <div className="mt-8 inline-flex items-center gap-2 bg-[#9ecdd7] text-[#3d5a63] px-3 py-1.5 rounded-full font-bold text-xs w-fit">
-                  <span className="material-symbols-rounded text-sm">trending_up</span> +2.4% <span className="text-[#5f7f8a] font-medium ml-1">from last month</span>
+
                 </div>
               </div>
-              <div className="bg-[#fce1cd] text-slate-900 p-8 rounded-[2.5rem] shadow-sm flex flex-col justify-between min-h-[240px]">
+              <div className="bg-[#fce1cd] text-slate-900 p-6 sm:p-8 rounded-[2.5rem] shadow-sm flex flex-col justify-between min-h-[240px]">
                 <p className="text-[10px] font-black uppercase tracking-widest text-[#ad8771] mb-2">You Paid Other</p>
-                <p className="text-6xl font-black tracking-tighter text-[#a86539]">₹{totalReceivable.toLocaleString()}</p>
+                <p className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter text-[#a86539] break-all sm:break-normal">₹{totalReceivable.toLocaleString()}</p>
                 <div className="mt-auto">
                   <span className="inline-flex bg-white/40 text-[#a86539] px-4 py-2 rounded-full text-[10px] font-black tracking-widest uppercase items-center gap-1.5">
-                    <span className="material-symbols-rounded text-sm">arrow_downward</span> 3 Active
+
                   </span>
                 </div>
               </div>
-              <div className="bg-white text-slate-900 p-8 rounded-[2.5rem] shadow-sm flex flex-col justify-between min-h-[240px]">
+              <div className="bg-white text-slate-900 p-6 sm:p-8 rounded-[2.5rem] shadow-sm flex flex-col justify-between min-h-[240px]">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Other Paid Me</p>
-                <p className="text-6xl font-black tracking-tighter text-slate-800">₹{totalPayable.toLocaleString()}</p>
+                <p className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter text-slate-800 break-all sm:break-normal">₹{totalPayable.toLocaleString()}</p>
                 <div className="mt-auto">
                   <span className="inline-flex bg-rose-50 text-rose-500 px-4 py-2 rounded-full text-[10px] font-black tracking-widest uppercase items-center gap-1.5">
-                    <span className="material-symbols-rounded text-sm">event</span> Due in 5d
+
                   </span>
                 </div>
               </div>
@@ -623,36 +624,48 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
 
         {activeTab === 'TRANSACTIONS' && (
           <div className="glass-panel rounded-[4rem] p-12 space-y-8">
-            <h3 className="text-3xl font-black tracking-tight">Financial Ledger</h3>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <h3 className="text-3xl font-black tracking-tight">Financial Ledger</h3>
+              <select
+                value={filterAccountId}
+                onChange={(e) => setFilterAccountId(e.target.value)}
+                className="bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white px-4 py-2 rounded-xl font-bold text-sm border-none focus:ring-2 focus:ring-primary outline-none"
+              >
+                <option value="ALL">All Accounts</option>
+                {accounts.map(acc => (
+                  <option key={acc.id} value={acc.id}>{acc.name}</option>
+                ))}
+              </select>
+            </div>
             <div className="space-y-4">
-              {transactions.map(tx => (
-                <div key={tx.id} className="flex items-center justify-between p-6 glass-card hover:border-primary/20 transition-all border border-transparent group">
-                  <div className="flex items-center gap-6">
-                    <div className="size-14 rounded-2xl glass-card flex items-center justify-center text-2xl shadow-sm">
+              {transactions.filter(tx => filterAccountId === 'ALL' ? true : tx.accountId === filterAccountId || tx.toAccountId === filterAccountId).map(tx => (
+                <div key={tx.id} className="flex items-center justify-between p-4 sm:p-6 glass-card hover:border-primary/20 transition-all border border-transparent group gap-2 sm:gap-4">
+                  <div className="flex items-center gap-3 sm:gap-6 flex-1 min-w-0 pr-2">
+                    <div className="size-10 sm:size-14 rounded-2xl glass-card flex items-center justify-center text-xl sm:text-2xl shadow-sm shrink-0">
                       {tx.type === 'TRANSFER' ? '🔄' : tx.type === 'SPLIT' ? '👥' : tx.type === 'SETTLEMENT' ? '🤝' : tx.type === 'INCOME' ? '📈' : '💸'}
                     </div>
-                    <div>
-                      <p className="font-black text-lg">{tx.purpose}</p>
-                      <div className="flex gap-4 mt-1">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{tx.date}</span>
+                    <div className="min-w-0">
+                      <p className="font-black text-sm sm:text-lg truncate">{tx.purpose}</p>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest shrink-0">{tx.date}</span>
                         {tx.payerName && (
-                          <span className="text-[10px] font-black text-primary uppercase tracking-widest">Payer: {tx.payerName}</span>
+                          <span className="text-[10px] font-black text-primary uppercase tracking-widest shrink-0">Payer: {tx.payerName}</span>
                         )}
                         {tx.type === 'SPLIT' && tx.participantNames && (
-                          <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">{tx.participantNames.length + 1} People</span>
+                          <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest shrink-0">{tx.participantNames.length + 1} People</span>
                         )}
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-6">
-                    <p className={`text-2xl font-black ${tx.type === 'INCOME' ? 'text-emerald-500' : tx.type === 'TRANSFER' ? 'text-slate-400' : 'text-rose-500'}`}>
+                  <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-6 shrink-0">
+                    <p className={`text-lg sm:text-2xl font-black whitespace-nowrap ${tx.type === 'INCOME' ? 'text-emerald-500' : tx.type === 'TRANSFER' ? 'text-slate-400' : 'text-rose-500'}`}>
                       {tx.type === 'INCOME' ? '+' : tx.type === 'TRANSFER' ? '⇄' : '-'}₹{tx.amount.toLocaleString()}
                     </p>
-                    <button onClick={() => deleteTransaction(tx.id)} className="opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-rose-500 transition-all">✕</button>
+                    <button onClick={() => deleteTransaction(tx.id)} className="opacity-100 sm:opacity-0 group-hover:opacity-100 p-1 sm:p-2 text-slate-400 hover:text-rose-500 transition-all">✕</button>
                   </div>
                 </div>
               ))}
-              {transactions.length === 0 && <p className="text-center py-20 text-slate-400 font-bold uppercase tracking-widest">No activity found.</p>}
+              {transactions.filter(tx => filterAccountId === 'ALL' ? true : tx.accountId === filterAccountId || tx.toAccountId === filterAccountId).length === 0 && <p className="text-center py-20 text-slate-400 font-bold uppercase tracking-widest">No activity found.</p>}
             </div>
           </div>
         )}

@@ -131,7 +131,7 @@ const FloatingAIChat: React.FC = () => {
     };
 
     return (
-        <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end font-sans">
+        <div className="fixed bottom-24 md:bottom-6 right-4 md:right-6 z-[9999] flex flex-col items-end font-sans">
             {/* Chat Window */}
             {isOpen && (
                 <div className="mb-4 w-[350px] sm:w-[400px] bg-[#0f172a]/95 backdrop-blur-xl border border-white/10 rounded-3xl shadow-2xl overflow-hidden flex flex-col transform transition-all duration-300 origin-bottom-right animate-in zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:zoom-out-95 data-[state=closed]:opacity-0">
