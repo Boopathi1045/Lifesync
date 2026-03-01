@@ -565,30 +565,17 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
         {activeTab === 'OVERVIEW' && (
           <div className="space-y-8 animate-in fade-in duration-500">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="bg-[#c1e5ed] text-slate-900 p-6 sm:p-8 rounded-[2.5rem] shadow-sm flex flex-col justify-between min-h-[240px]">
+              <div className="bg-[#c1e5ed] text-slate-900 p-6 sm:p-8 rounded-[2.5rem] shadow-sm flex flex-col justify-center gap-2 min-h-[180px]">
                 <p className="text-[10px] font-black uppercase tracking-widest text-[#5f7f8a] mb-2">Total Net Worth</p>
                 <h3 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter break-all sm:break-normal">₹{netWorth.toLocaleString()}</h3>
-                <div className="mt-8 inline-flex items-center gap-2 bg-[#9ecdd7] text-[#3d5a63] px-3 py-1.5 rounded-full font-bold text-xs w-fit">
-
-                </div>
               </div>
-              <div className="bg-[#fce1cd] text-slate-900 p-6 sm:p-8 rounded-[2.5rem] shadow-sm flex flex-col justify-between min-h-[240px]">
+              <div className="bg-[#fce1cd] text-slate-900 p-6 sm:p-8 rounded-[2.5rem] shadow-sm flex flex-col justify-center gap-2 min-h-[180px]">
                 <p className="text-[10px] font-black uppercase tracking-widest text-[#ad8771] mb-2">You Paid Other</p>
                 <p className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter text-[#a86539] break-all sm:break-normal">₹{totalReceivable.toLocaleString()}</p>
-                <div className="mt-auto">
-                  <span className="inline-flex bg-white/40 text-[#a86539] px-4 py-2 rounded-full text-[10px] font-black tracking-widest uppercase items-center gap-1.5">
-
-                  </span>
-                </div>
               </div>
-              <div className="bg-white text-slate-900 p-6 sm:p-8 rounded-[2.5rem] shadow-sm flex flex-col justify-between min-h-[240px]">
+              <div className="bg-white text-slate-900 p-6 sm:p-8 rounded-[2.5rem] shadow-sm flex flex-col justify-center gap-2 min-h-[180px]">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Other Paid Me</p>
                 <p className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter text-slate-800 break-all sm:break-normal">₹{totalPayable.toLocaleString()}</p>
-                <div className="mt-auto">
-                  <span className="inline-flex bg-rose-50 text-rose-500 px-4 py-2 rounded-full text-[10px] font-black tracking-widest uppercase items-center gap-1.5">
-
-                  </span>
-                </div>
               </div>
             </div>
           </div>
@@ -653,6 +640,11 @@ const FinanceManager: React.FC<FinanceManagerProps> = ({
                         )}
                         {tx.type === 'SPLIT' && tx.participantNames && (
                           <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest shrink-0">{tx.participantNames.length + 1} People</span>
+                        )}
+                        {filterAccountId === 'ALL' && (
+                          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest shrink-0 ml-auto bg-slate-800/50 px-2 py-0.5 rounded-full">
+                            {accounts.find(a => a.id === tx.accountId)?.name || 'Unknown Account'}
+                          </span>
                         )}
                       </div>
                     </div>
