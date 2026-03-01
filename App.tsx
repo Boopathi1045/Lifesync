@@ -207,8 +207,9 @@ const App: React.FC = () => {
             console.log(`[Realtime] Event on ${table.name}:`, payload);
             if (payload.eventType === 'INSERT') {
               table.setter(prev => {
-                if ((prev as any[]).find(r => r.id === payload.new.id)) return prev;
-                const next = [...(prev as any[]), payload.new];
+                const prevArray = prev as any[];
+                if (prevArray.some(r => r.id === payload.new.id)) return prev;
+                const next = [...prevArray, payload.new];
                 return table.sortKey ? next.sort((a, b) => String(a[table.sortKey!]).localeCompare(String(b[table.sortKey!]))) : next;
               });
             } else if (payload.eventType === 'DELETE') {
